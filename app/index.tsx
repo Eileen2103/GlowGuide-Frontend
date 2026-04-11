@@ -1,0 +1,124 @@
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { BASE_URL } from '../service/apiConfig'; // Dosya yoluna göre ayarla
+
+export default function LoginScreen() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const router = useRouter();
+
+
+
+const handleLogin = async () => {
+  try {
+    const response = await fetch(`${BASE_URL}/users/login`, { // Aşağıda BASE_URL'i tanımlayacağız
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (response.ok) {
+      const userData = await response.json();
+      console.log("Giriş Başarılı, Kullanıcı ID:", userData.id);
+      
+      router.replace({
+        pathname: '/(tabs)/home',
+        params: { userId: userData.id } 
+      } as any); // as any'yi tüm nesne için kullan
+
+    } else {
+      Alert.alert('Hata', 'E-posta veya şifre yanlış!');
+    }
+  } catch (error) {
+    console.error(error);
+    Alert.alert('Bağlantı Hatası', 'Sunucuya ulaşılamadı.');
+  }
+};
+
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>GlowGuide</Text>
+      <Text style={styles.subtitle}>Cilt bakım asistanına hoş geldin</Text>
+
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.input}
+          placeholder="E-posta Adresi"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Şifre"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry 
+        />
+      </View>
+
+      <TouchableOpacity style={styles.button} onPress={handleLogin}>
+        <Text style={styles.buttonText}>Giriş Yap</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={() => router.push('/register')}>
+        <Text style={styles.linkText}>Hesabın yok mu? Kayıt Ol</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fbf9f9', 
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#3f0623', 
+    marginBottom: 10,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 40,
+  },
+  inputContainer: {
+    width: '100%',
+    marginBottom: 20,
+  },
+  input: {
+    backgroundColor: '#FFF',
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    marginBottom: 15,
+    fontSize: 16,
+  },
+  button: {
+    backgroundColor: '#cf8aa9',
+    width: '100%',
+    padding: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  buttonText: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  linkText: {
+    color: '#9c4e57',
+    marginTop: 10,
+  },
+});
