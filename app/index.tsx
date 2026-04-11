@@ -10,32 +10,45 @@ export default function LoginScreen() {
 
 
 
-const handleLogin = async () => {
+  const handleLogin = async () => {
   try {
-    const response = await fetch(`${BASE_URL}/users/login`, { //api olmayacak!!!!
+    
+    const response = await fetch(`${BASE_URL}/users/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
 
+    const text = await response.text(); // HER ZAMAN TEXT OKU
+
+    console.log("RAW RESPONSE:", text);
+
+    let data;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch (e) {
+      console.log("JSON parse error:", e);
+      Alert.alert("Hata", "Sunucu geçersiz cevap döndü");
+      return;
+    }
+
     if (response.ok) {
-      const userData = await response.json();
-      console.log("Giriş Başarılı, Kullanıcı ID:", userData.id);
-      
+      console.log("Giriş Başarılı, Kullanıcı ID:", data.id);
+
       router.replace({
         pathname: '/(tabs)/home',
-        params: { userId: userData.id } 
-      } as any); // as any'yi tüm nesne için kullan
+        params: { userId: data.id },
+      } as any);
 
     } else {
-      Alert.alert('Hata', 'E-posta veya şifre yanlış!');
+      Alert.alert('Hata', data?.message || 'E-posta veya şifre yanlış!');
     }
+
   } catch (error) {
     console.error(error);
     Alert.alert('Bağlantı Hatası', 'Sunucuya ulaşılamadı.');
   }
 };
-
 
   return (
     <View style={styles.container}>
@@ -56,7 +69,7 @@ const handleLogin = async () => {
           placeholder="Şifre"
           value={password}
           onChangeText={setPassword}
-          secureTextEntry 
+          secureTextEntry
         />
       </View>
 
@@ -74,7 +87,7 @@ const handleLogin = async () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fbf9f9', 
+    backgroundColor: '#fbf9f9',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
@@ -82,7 +95,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#3f0623', 
+    color: '#3f0623',
     marginBottom: 10,
   },
   subtitle: {

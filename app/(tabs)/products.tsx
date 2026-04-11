@@ -3,11 +3,7 @@ import { useGlobalSearchParams, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert // Hata aldığın Alert burada eklendi
-  ,
-
-
-
+  Alert,
   FlatList,
   Modal,
   SafeAreaView,
@@ -44,16 +40,32 @@ export default function ProductsScreen() {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Yeni Ürün Kaydı State (Picker için category Türkçe başlatıldı)
   const [newProduct, setNewProduct] = useState({
     name: '',
     brand: '',
     productType: '',
-    category: 'Cilt', 
+    category: 'Cilt',
     openedAt: new Date().toISOString().split('T')[0],
     paoMonths: 12
   });
+  const handleDateInput = (text: string) => {
+    // Sadece rakamları al
+    let cleaned = text.replace(/[^0-9]/g, '');
+
+    // Arayüzde kullanıcıya Gün-Ay-Yıl (14-04-2026) gösterelim
+    let displayed = cleaned;
+    if (cleaned.length > 2 && cleaned.length <= 4) {
+      displayed = `${cleaned.slice(0, 2)}-${cleaned.slice(2)}`;
+    } else if (cleaned.length > 4) {
+      displayed = `${cleaned.slice(0, 2)}-${cleaned.slice(2, 4)}-${cleaned.slice(4, 8)}`;
+    }
+
+    // Arayüz state'ini güncelle (Kullanıcı bunu görecek)
+    setNewProduct({ ...newProduct, openedAt: displayed });
+  };
 
   const mapCategoryToEnum = (label: string) => {
     switch (label) {
@@ -63,51 +75,89 @@ export default function ProductsScreen() {
       default: return 'SKIN';
     }
   };
+  const onRefresh = React.useCallback(async () => {
+  setRefreshing(true);
+  await fetchUserProducts(); // Verileri tekrar çek
+  setRefreshing(false);
+}, []);
 
-  const fetchUserProducts = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`${BASE_URL}/products/user/${userId}`);
-      const data = await response.json();
-      console.log("Çekilen Ürünler:", data);
-      setProducts(data);
-      setFilteredProducts(data);
-    } catch (error) {
-      console.error("Ürünler çekilirken hata oluştu:", error);
-    } finally {
-      setLoading(false);
+ const fetchUserProducts = async () => {
+  try {
+    setLoading(true);
+    const response = await fetch(`${BASE_URL}/products/user/${userId}`);
+
+    // --- GÜVENLİ PARSE BAŞLIYOR ---
+    let data = [];
+    
+    if (response.ok && response.status !== 204) {
+      const text = await response.text();
+      // Eğer text doluysa parse et, boşsa boş dizi [] ata
+      data = text ? JSON.parse(text) : [];
+    } else {
+      // Sunucu 204 No Content döndüyse veya hata varsa boş dizi kabul et
+      data = [];
     }
-  };
+
+    console.log("Çekilen Ürünler:", data);
+    
+    // Verinin her zaman bir dizi (Array) olduğundan emin oluyoruz
+    const finalData = Array.isArray(data) ? data : [];
+    
+    setProducts(finalData);
+    setFilteredProducts(finalData);
+    // --- GÜVENLİ PARSE BİTTİ ---
+
+  } catch (error) {
+    console.error("Ürünler çekilirken hata oluştu:", error);
+    // Hata durumunda boş liste göstererek uygulamanın kırılmasını önle
+    setProducts([]);
+    setFilteredProducts([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     fetchUserProducts();
   }, []);
 
   const handleCategoryPress = (category: string) => {
-  setSelectedCategory(category);
-  if (category === 'HEPSİ') {
-    setFilteredProducts(products);
-  } else {
-    // Backend'den gelen 'SKIN' ile senin 'SKIN' karşılaştırmanı yapıyoruz
-    const filtered = products.filter(p => p.category.toUpperCase() === category.toUpperCase());
-    setFilteredProducts(filtered);
-  }
-};
+    setSelectedCategory(category);
+    if (category === 'HEPSİ') {
+      setFilteredProducts(products);
+    } else {
+      // Backend'den gelen 'SKIN' ile senin 'SKIN' karşılaştırmanı yapıyoruz
+      const filtered = products.filter(p => p.category.toUpperCase() === category.toUpperCase());
+      setFilteredProducts(filtered);
+    }
+  };
 
   const handleSaveProduct = async () => {
-    if (!newProduct.name || !newProduct.brand) {
-      Alert.alert("Hata", "Lütfen ürün adı ve markasını doldurun.");
-      return;
+    let backendFormat = "";
+
+    // Eğer tarih GG-AA-YYYY formatındaysa (tire içeriyorsa)
+    if (newProduct.openedAt.includes('-')) {
+      const parts = newProduct.openedAt.split('-');
+
+      // YYYY-MM-DD kontrolü (ISO formatı zaten doğru gelmiş olabilir)
+      if (parts[0].length === 4) {
+        backendFormat = newProduct.openedAt;
+      } else {
+        // GG-AA-YYYY -> YYYY-MM-DD çevirisi
+        backendFormat = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
     }
 
     const productData = {
       ...newProduct,
+      openedAt: backendFormat,
       category: mapCategoryToEnum(newProduct.category),
       paoMonths: newProduct.paoMonths || 12
     };
 
     try {
-      const response = await fetch(`${BASE_URL}/api/products/add/${userId}`, {
+      // BURASI POST OLARAK /add/ ADRESİNE GİDİYOR (DOĞRU)
+      const response = await fetch(`${BASE_URL}/products/add/${userId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(productData),
@@ -116,16 +166,15 @@ export default function ProductsScreen() {
       if (response.ok) {
         Alert.alert("Başarılı", "Yeni ürünün GlowGuide'a eklendi! ✨");
         setIsAddModalVisible(false);
-        fetchUserProducts();
+        fetchUserProducts(); // Listeyi yenile
       } else {
         const errorMsg = await response.text();
-        Alert.alert("Hata", errorMsg || "Sunucu hatası oluştu.");
+        Alert.alert("Hata", "Ürün kaydedilemedi. Formatı kontrol edin.");
       }
     } catch (error) {
       Alert.alert("Hata", "Bağlantı kurulamadı.");
     }
   };
-
   const calculateExpiryDate = (openedAt: string, paoMonths: number) => {
     if (!openedAt || !paoMonths) return 'Hesaplanamadı';
     const date = new Date(openedAt);
@@ -177,6 +226,8 @@ export default function ProductsScreen() {
 
       <FlatList
         data={filteredProducts}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
         keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => (
           <View style={[styles.card, { backgroundColor: getCardColor(item.category) }]}>
@@ -282,20 +333,45 @@ export default function ProductsScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.formLabel}>Açılış Tarihi</Text>
+
+                {/* Hızlı Seçim Butonları */}
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                  <TouchableOpacity
+                    style={styles.quickDateButton}
+                    onPress={() => setNewProduct({ ...newProduct, openedAt: new Date().toISOString().split('T')[0] })}
+                  >
+                    <Text style={styles.quickDateText}>Bugün</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.quickDateButton}
+                    onPress={() => {
+                      const yesterday = new Date();
+                      yesterday.setDate(yesterday.getDate() - 1);
+                      setNewProduct({ ...newProduct, openedAt: yesterday.toISOString().split('T')[0] });
+                    }}
+                  >
+                    <Text style={styles.quickDateText}>Dün</Text>
+                  </TouchableOpacity>
+                </View>
+
                 <TextInput
                   style={styles.input}
-                  placeholder="YYYY-MM-DD"
+                  placeholder="GG-AA-YYYY"
+                  placeholderTextColor="#999"
+                  keyboardType="numeric"
+                  maxLength={10}
                   value={newProduct.openedAt}
-                  onChangeText={(txt) => setNewProduct({ ...newProduct, openedAt: txt })}
+                  onChangeText={handleDateInput}
                 />
               </View>
             </View>
 
             <TouchableOpacity style={styles.saveButton} onPress={handleSaveProduct}>
-              <Text style={styles.saveButtonText}>Sisteme Kaydet</Text>
+              <Text style={styles.saveButtonText}>Kaydet</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => setIsAddModalVisible(false)} style={{marginTop: 15}}>
+            <TouchableOpacity onPress={() => setIsAddModalVisible(false)} style={{ marginTop: 15 }}>
               <Text style={styles.cancelText}>Vazgeç</Text>
             </TouchableOpacity>
           </View>
@@ -316,27 +392,27 @@ const styles = StyleSheet.create({
   listContainer: { paddingHorizontal: 20, paddingBottom: 100 },
   card: { flexDirection: 'row', justifyContent: 'space-between', borderRadius: 20, padding: 15, marginBottom: 15, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
   cardLeft: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  flex: 1, // Bu çok önemli! Soldaki alanın büyümesini sağlar.
-},
-textContainer: {
-  marginLeft: 15,
-  flex: 1, // Yazıların sığmadığında alt satıra geçmesi veya alanı kaplaması için şart.
-},
-productName: {
-  fontSize: 16,
-  fontWeight: 'bold',
-  color: '#333',
-  flexShrink: 1, // Uzun isimlerin puanın üstüne binmesini engeller.
-},
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1, // Bu çok önemli! Soldaki alanın büyümesini sağlar.
+  },
+  textContainer: {
+    marginLeft: 15,
+    flex: 1, // Yazıların sığmadığında alt satıra geçmesi veya alanı kaplaması için şart.
+  },
+  productName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    flexShrink: 1, // Uzun isimlerin puanın üstüne binmesini engeller.
+  },
   brandText: { fontSize: 13, color: '#666', marginTop: 2 },
   cardRight: {
-  alignItems: 'flex-end',
-  justifyContent: 'space-between',
-  marginLeft: 10,
-  minWidth: 70, // Puan ve buton için sabit bir alan ayıralım.
-},
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginLeft: 10,
+    minWidth: 70, // Puan ve buton için sabit bir alan ayıralım.
+  },
   scoreText: { fontSize: 14, fontWeight: '600', color: '#6C5CE7' },
   dateRow: { flexDirection: 'row', alignItems: 'center', marginTop: 3 },
   dateText: { fontSize: 13, color: '#888' },
@@ -365,5 +441,18 @@ productName: {
   pickerButtonTextActive: { color: '#FFF' },
   saveButton: { backgroundColor: '#5D4F8D', width: '100%', padding: 15, borderRadius: 12, alignItems: 'center', marginTop: 10 },
   saveButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
-  cancelText: { color: '#999', fontWeight: '600' }
+  cancelText: { color: '#999', fontWeight: '600' },
+  quickDateButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#F0F0F0',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#DDD',
+  },
+  quickDateText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '600',
+  },
 });

@@ -2,7 +2,7 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 
 import { useGlobalSearchParams, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { BASE_URL } from '../../service/apiConfig';
 
 // Backend UserResponseDto ile birebir uyumlu interface
@@ -19,7 +19,7 @@ interface UserProfile {
 export default function ProfileScreen() {
   const localParams = useLocalSearchParams();
   const globalParams = useGlobalSearchParams();
-  
+
   const userId = localParams.userId || globalParams.userId; // Login'den gelen ID
   console.log("Profil sayfasında yakalanan Global ID:", userId);
 
@@ -27,23 +27,57 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
 
   // Profil verilerini çekme
-  const fetchUserProfile = async () => {
-    try {
-      //api olmıcak!!!
-      const response = await fetch(`${BASE_URL}/users/${userId}`);
-      const data = await response.json();
-      console.log("Gelen Veriler:", data);
-      setUser(data);
-    } catch (error) {
-      console.error("Profil yüklenirken hata:", error);
-    } finally {
-      setLoading(false);
+const fetchUserProfile = async () => {
+  try {
+    setLoading(true);
+    
+    const response = await fetch(`${BASE_URL}/users/${userId}`);
+
+    // --- GÜVENLİ PARSE 
+    let data = null;
+
+    if (response.ok && response.status !== 204) {
+      const text = await response.text();
+      // Metin doluysa JSON olarak parçala, boşsa null bırak
+      data = text ? JSON.parse(text) : null;
     }
-  };
+
+    console.log("Profil Sayfası Gelen Veri:", data);
+
+    if (data) {
+      setUser(data);
+    } else {
+      console.warn("Kullanıcı verisi boş döndü.");
+      // İsteğe bağlı: Kullanıcı bulunamadıysa bir uyarı gösterilebilir
+    }
+   
+
+  } catch (error) {
+    console.error("Profil yüklenirken hata:", error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     fetchUserProfile();
   }, [userId]);
+
+  const UserAvatar = ({ imageUrl }: { imageUrl: string | null | undefined }) => {
+    return (
+      <View style={styles.container}>
+        <Image
+          source={{
+            uri: user?.avatarUrl
+              ? user.avatarUrl
+              : 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png'
+          }}
+          style={styles.avatarImage}
+          resizeMode="cover"
+        />
+      </View>
+    );
+  };
 
   const SettingItem = ({ icon, title, subtitle, color }: any) => (
     <TouchableOpacity style={styles.settingItem}>
@@ -77,8 +111,21 @@ export default function ProfileScreen() {
         {/* User Card */}
         <View style={styles.userCard}>
           <View style={styles.avatarContainer}>
-             <Ionicons name="person" size={50} color="#CCC" />
+
+            {user?.avatarUrl ? (
+              <Image
+                source={{ uri: user.avatarUrl }}
+                style={styles.avatarImage}
+                resizeMode="cover"
+                onLoadStart={() => console.log("Avatar yükleniyor...")}
+                onError={() => console.error("Avatar yüklenemedi!")}
+              />
+            ) : (
+              <Ionicons name="person" size={50} color="#CCC" />
+            )}
           </View>
+
+
           {/* İsim + Soyisim  */}
           <Text style={styles.userName}>
             {user ? `${user.name} ${user.surname}` : 'Yükleniyor...'}
@@ -142,4 +189,9 @@ const styles = StyleSheet.create({
   settingTextContainer: { flex: 1 },
   settingTitle: { fontSize: 16, fontWeight: '500', color: '#333' },
   settingSubtitle: { fontSize: 12, color: '#888', marginTop: 2 },
+  avatarImage: {
+    width: 80, // avatarContainer ile aynı genişlik
+    height: 80, // avatarContainer ile aynı yükseklik
+    borderRadius: 40, // Tam yuvarlak
+  },
 });
