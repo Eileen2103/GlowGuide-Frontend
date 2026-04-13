@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { BASE_URL } from '../service/apiConfig'; // Dosya yoluna göre ayarla
+import { BASE_URL } from '../service/apiConfig';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -12,7 +12,7 @@ export default function LoginScreen() {
 
 const handleLogin = async () => {
   try {
-    const response = await fetch(`${BASE_URL}/users/login`, { // Aşağıda BASE_URL'i tanımlayacağız
+    const response = await fetch(`${BASE_URL}/users/login`, { //api olmayacak!!!!
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),

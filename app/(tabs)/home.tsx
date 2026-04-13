@@ -1,40 +1,110 @@
-import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import React, { useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useGlobalSearchParams } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { BASE_URL } from '../../service/apiConfig';
 
+interface RoutineItemData {
+  id: number;
+  productName: string;
+  isCompleted: boolean;
+}
 
 interface RoutineState {
   [key: string]: boolean;
 }
 
-
 const COLORS = {
-  bgPurple: '#ffe4f0', 
-  bgWhite: '#FFFFFF',  
-  textPrimary: '#58022c', 
-  textSecondary: '#616161', 
-  accent: '#7E57C2',     
-  checked: '#B39DDB',    
-  alertBg: '#ffcdcb',    
-  alertText: '#b40303',  
+  bgPurple: '#ffe4f0',
+  bgWhite: '#FFFFFF',
+  textPrimary: '#58022c',
+  textSecondary: '#616161',
+  accent: '#7E57C2',
+  checked: '#B39DDB',
+  alertBg: '#ffcdcb',
+  alertText: '#b40303',
 };
 
 export default function HomeScreen() {
-  // 2. Başlangıçta boş state'ler (Kullanıcı girişi yapılmadığı için)
+  const params = useGlobalSearchParams();
+  const userId = params.userId || '1';
+
+  const [userName, setUserName] = useState('');
   const [morningRoutine, setMorningRoutine] = useState<RoutineState>({});
   const [eveningRoutine, setEveningRoutine] = useState<RoutineState>({});
+  const [loading, setLoading] = useState(true);
+  const [weeklyRoutines, setWeeklyRoutines] = useState<any>({});
+  const DAYS = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
 
-  // İşaretleme (Check) fonksiyonu - TS uyumlu
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+
+      // Paralel fetch: Hem kullanıcıyı hem rutinleri çek
+      const [userRes, routineRes] = await Promise.all([
+        fetch(`${BASE_URL}/users/${userId}`),
+        fetch(`${BASE_URL}/routines/${userId}`)
+      ]);
+
+
+      const userData = await userRes.json();
+      console.log("Kullanıcı ve Rutin Verileri Çekildi:", userData);
+      // Backend'den gelen List<RoutineResponseDto> yapısı
+      const routineData: any[] = await routineRes.json();
+
+      setUserName(userData.name);
+
+
+      const morning = routineData
+        .filter(item => item.type === 'MORNING')
+        .reduce((acc, item) => ({
+          ...acc,
+          [item.description]: item.completed
+        }), {});
+
+      
+      const evening = routineData
+        .filter(item => item.type === 'NIGHT')
+        .reduce((acc, item) => ({
+          ...acc,
+          [item.description]: item.completed
+        }), {});
+
+      const weekly = routineData
+        .filter(item => item.type === 'WEEKLY')
+        .reduce((acc: any, item: any) => {
+          const dayName = DAYS[item.dayOfWeek - 1] || "Diğer"; // dayOfWeek 1-7 arası 
+          if (!acc[dayName]) acc[dayName] = [];
+          acc[dayName].push(item);
+          return acc;
+        }, {});
+
+      setMorningRoutine(morning);
+      setEveningRoutine(evening);
+      setWeeklyRoutines(weekly);
+
+    } catch (error) {
+      console.error("HomeScreen Veri Çekme Hatası:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [userId]);
+
+
   const toggleRoutine = (time: 'morning' | 'evening', item: string) => {
     if (time === 'morning') {
       setMorningRoutine({ ...morningRoutine, [item]: !morningRoutine[item] });
     } else {
       setEveningRoutine({ ...eveningRoutine, [item]: !eveningRoutine[item] });
     }
+
   };
 
-  // Rutin maddesini çizen alt bileşen
-  const RoutineItem = ({ time, name, isChecked, label }: { time: 'morning' | 'evening', name: string, isChecked: boolean, label: string }) => (
+  const RoutineItem = ({ time, name, isChecked, label }: any) => (
     <TouchableOpacity style={styles.routineItem} onPress={() => toggleRoutine(time, name)}>
       <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
         {isChecked && <Ionicons name="checkmark" size={16} color="white" />}
@@ -43,20 +113,22 @@ export default function HomeScreen() {
     </TouchableOpacity>
   );
 
+  if (loading) {
+    return <ActivityIndicator size="large" color={COLORS.accent} style={{ flex: 1 }} />;
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-        
-        {/* --- ÜST KISIM (Header) --- */}
+
         <View style={styles.headerSection}>
           <Text style={styles.brandTitle}>GlowGuide</Text>
-          
+
           <View style={styles.greetingRow}>
             <Text style={styles.greetingText}>
-              Günün Güzel{"\n"}Geçsin,{"\n"}Selin! ✨
+              Günün Güzel{"\n"}Geçsin,{"\n"}{userName}! ✨
             </Text>
-            
-            {/* Hava Durumu Kartı */}
+
             <View style={styles.weatherCard}>
               <Text style={styles.weatherCity}>İSTANBUL</Text>
               <Text style={styles.weatherTemp}>18°C</Text>
@@ -68,35 +140,58 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* --- ALT KISIM (Rutinler) --- */}
         <View style={styles.mainSection}>
           <Text style={styles.sectionTitle}>GÜNLÜK RUTİNİM</Text>
-          
+
           <View style={styles.routinesRow}>
-            {/* Sabah Rutini Kartı */}
+            {/* Sabah Kartı */}
             <View style={styles.routineCard}>
               <Text style={styles.routineCardTitle}>Sabah Rutini</Text>
-              {Object.keys(morningRoutine).length > 0 ? (
-                Object.keys(morningRoutine).map((key) => (
-                  <RoutineItem key={key} time="morning" name={key} isChecked={morningRoutine[key]} label={key} />
-                ))
-              ) : (
-                <Text style={styles.emptyText}>Henüz ürün eklenmedi</Text>
-              )}
+              {Object.keys(morningRoutine).map((key) => (
+                <RoutineItem key={key} time="morning" name={key} isChecked={morningRoutine[key]} label={key} />
+              ))}
             </View>
 
-            {/* Akşam Rutini Kartı */}
+            {/* Akşam Kartı */}
             <View style={styles.routineCard}>
               <Text style={styles.routineCardTitle}>Akşam Rutini</Text>
-              {Object.keys(eveningRoutine).length > 0 ? (
-                Object.keys(eveningRoutine).map((key) => (
-                  <RoutineItem key={key} time="evening" name={key} isChecked={eveningRoutine[key]} label={key} />
-                ))
-              ) : (
-                <Text style={styles.emptyText}>Henüz ürün eklenmedi</Text>
-              )}
+              {Object.keys(eveningRoutine).map((key) => (
+                <RoutineItem key={key} time="evening" name={key} isChecked={eveningRoutine[key]} label={key} />
+              ))}
             </View>
           </View>
+          {/* --- HAFTALIK ÖZEL BAKIM --- */}
+          <View style={{ marginTop: 25, marginBottom: 20 }}>
+            <Text style={styles.sectionTitle}>HAFTALIK ÖZEL BAKIM</Text>
+
+            {Object.keys(weeklyRoutines).length > 0 ? (
+              Object.keys(weeklyRoutines).map((day) => (
+                <View key={day} style={styles.weeklyDayContainer}>
+                  <View style={styles.dayLabelContainer}>
+                    <Ionicons name="calendar-outline" size={14} color={COLORS.accent} />
+                    <Text style={styles.dayLabelText}>{day}</Text>
+                  </View>
+
+                  <View style={styles.weeklyCard}>
+                    {weeklyRoutines[day].map((item: any) => (
+                      <RoutineItem
+                        key={item.id}
+                        time="weekly" 
+                        name={item.description}
+                        isChecked={item.completed}
+                        label={item.description}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>Bu hafta için planlanmış özel bir bakım yok.</Text>
+            )}
+          </View>
+
+
+
 
           {/* Uyarı Kutusu */}
           <View style={styles.alertBox}>
@@ -104,37 +199,16 @@ export default function HomeScreen() {
             <View>
               <Text style={styles.alertTitle}>Dikkat! C Vitamini Serumunun</Text>
               <Text style={styles.alertTitle}>Süresi Doluyor.</Text>
-              <Text style={styles.alertSubtitle}>Açıldıktan sonra 6 ay (PAO), 3 gün kaldı.</Text>
+              <Text style={styles.alertSubtitle}>PAO: 3 gün kaldı.</Text>
             </View>
           </View>
         </View>
       </ScrollView>
-
-      {/* --- ALT MENÜ (Tab Bar - Statik) --- */}
-      <View style={styles.tabBar}>
-        <TabItem icon="home" label="Ev" focused />
-        <TabItem icon="shopping-bag" label="Ürünler" />
-        <TabItem icon="brain" label="AI Analiz" />
-        <TabItem icon="chatbubble-ellipses" label="Sohbet" />
-        <TabItem icon="user-circle" label="Profil" />
-      </View>
     </SafeAreaView>
   );
 }
 
-// Tab Item Bileşeni
-const TabItem = ({ icon, label, focused }: { icon: string, label: string, focused?: boolean }) => {
-  const IconComponent = (icon === 'brain' || icon === 'shopping-bag') ? FontAwesome5 : MaterialCommunityIcons;
-  const iconName: any = icon === 'home' ? 'home-variant' : icon === 'chatbubble-ellipses' ? 'chatbubble-ellipses' : icon === 'user-circle' ? 'account-circle' : icon;
-
-  return (
-    <TouchableOpacity style={styles.tabItem}>
-      <IconComponent name={iconName} size={24} color={focused ? COLORS.accent : COLORS.textSecondary} />
-      <Text style={[styles.tabLabel, focused && styles.tabLabelFocused]}>{label}</Text>
-    </TouchableOpacity>
-  );
-};
-
+//  styles sheet
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.bgPurple },
   container: { flex: 1, backgroundColor: COLORS.bgPurple },
@@ -166,4 +240,33 @@ const styles = StyleSheet.create({
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   tabLabel: { fontSize: 10, marginTop: 5, color: COLORS.textSecondary },
   tabLabelFocused: { color: COLORS.accent, fontWeight: 'bold' },
+  weeklyDayContainer: {
+    marginBottom: 15,
+  },
+  dayLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+    paddingLeft: 5
+  },
+  dayLabelText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginLeft: 6,
+    textTransform: 'uppercase'
+  },
+  weeklyCard: {
+    backgroundColor: '#FDFCFE', // Çok hafif morumsu beyaz
+    padding: 15,
+    borderRadius: 20,
+    borderLeftWidth: 5,
+    borderLeftColor: COLORS.accent,
+    // Hafif gölge
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2
+  },
 });
