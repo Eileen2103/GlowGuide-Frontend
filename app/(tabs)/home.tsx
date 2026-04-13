@@ -325,6 +325,38 @@ const [eveningRoutine, setEveningRoutine] = useState<any[]>([]);
               ))}
             </View>
           </View>
+          {/* --- HAFTALIK ÖZEL BAKIM --- */}
+          <View style={{ marginTop: 25, marginBottom: 20 }}>
+            <Text style={styles.sectionTitle}>HAFTALIK ÖZEL BAKIM</Text>
+
+            {Object.keys(weeklyRoutines).length > 0 ? (
+              Object.keys(weeklyRoutines).map((day) => (
+                <View key={day} style={styles.weeklyDayContainer}>
+                  <View style={styles.dayLabelContainer}>
+                    <Ionicons name="calendar-outline" size={14} color={COLORS.accent} />
+                    <Text style={styles.dayLabelText}>{day}</Text>
+                  </View>
+
+                  <View style={styles.weeklyCard}>
+                    {weeklyRoutines[day].map((item: any) => (
+                      <RoutineItem
+                        key={item.id}
+                        time="weekly" 
+                        name={item.description}
+                        isChecked={item.completed}
+                        label={item.description}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>Bu hafta için planlanmış özel bir bakım yok.</Text>
+            )}
+          </View>
+
+
+
 
           <View style={{ marginTop: 25, marginBottom: 20 }}>
             <Text style={styles.sectionTitle}>HAFTALIK ÖZEL BAKIM</Text>

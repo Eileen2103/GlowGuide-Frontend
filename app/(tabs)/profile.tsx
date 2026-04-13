@@ -19,7 +19,6 @@ interface UserProfile {
 export default function ProfileScreen() {
   const localParams = useLocalSearchParams();
   const globalParams = useGlobalSearchParams();
-
   const userId = localParams.userId || globalParams.userId; // Login'den gelen ID
   console.log("Profil sayfasında yakalanan Global ID:", userId);
 
