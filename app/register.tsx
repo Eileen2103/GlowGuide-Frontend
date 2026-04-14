@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { BASE_URL } from '../service/apiConfig';
 
 export default function RegisterScreen() {
   const [userName, setUserName] = useState('');
@@ -8,18 +9,48 @@ export default function RegisterScreen() {
   const [surname, setSurname] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  
+
   const router = useRouter();
 
-  const handleRegister = () => {
-   
+  const handleRegister = async () => {
+    // 1. Temel Kontrol
     if (!userName || !email || !password) {
       Alert.alert('Hata', 'Lütfen yıldızlı alanları doldurun!');
       return;
     }
-    
-    Alert.alert('Başarılı', 'Kaydınız alınıyor...');
-    
+
+    try {
+      const response = await fetch(`${BASE_URL}/users/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userName: userName,
+          email: email,
+          firstName: name,
+          lastName: surname,
+          password: password,
+          // Tabloda NOT NULL kısıtlaması olmadığı için bunları null gönder
+          skinType: null,
+          birthday: null,
+          avatarUrl: null
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.text();
+        Alert.alert('Başarılı', 'GlowGuide\'a hoş geldin! Giriş yapabilirsin.', [
+          { text: 'Harika!', onPress: () => router.push('/') }
+        ]);
+      } else {
+        const errorText = await response.text();
+        Alert.alert('Kayıt Başarısız', errorText || 'Bir hata oluştu.');
+      }
+    } catch (error) {
+      console.error("Bağlantı Hatası:", error);
+      Alert.alert('Hata', 'Sunucuya bağlanılamadı. IP adresini kontrol et!');
+    }
   };
 
   return (
