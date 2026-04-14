@@ -1,6 +1,6 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
 
-import { useGlobalSearchParams, useLocalSearchParams } from 'expo-router';
+import { useGlobalSearchParams, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { BASE_URL } from '../../service/apiConfig';
@@ -24,39 +24,40 @@ export default function ProfileScreen() {
 
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   // Profil verilerini çekme
-const fetchUserProfile = async () => {
-  try {
-    setLoading(true);
-    
-    const response = await fetch(`${BASE_URL}/users/${userId}`);
+  const fetchUserProfile = async () => {
+    try {
+      setLoading(true);
 
-    // --- GÜVENLİ PARSE 
-    let data = null;
+      const response = await fetch(`${BASE_URL}/users/${userId}`);
 
-    if (response.ok && response.status !== 204) {
-      const text = await response.text();
-      // Metin doluysa JSON olarak parçala, boşsa null bırak
-      data = text ? JSON.parse(text) : null;
+      // --- GÜVENLİ PARSE 
+      let data = null;
+
+      if (response.ok && response.status !== 204) {
+        const text = await response.text();
+        // Metin doluysa JSON olarak parçala, boşsa null bırak
+        data = text ? JSON.parse(text) : null;
+      }
+
+      console.log("Profil Sayfası Gelen Veri:", data);
+
+      if (data) {
+        setUser(data);
+      } else {
+        console.warn("Kullanıcı verisi boş döndü.");
+        // İsteğe bağlı: Kullanıcı bulunamadıysa bir uyarı gösterilebilir
+      }
+
+
+    } catch (error) {
+      console.error("Profil yüklenirken hata:", error);
+    } finally {
+      setLoading(false);
     }
-
-    console.log("Profil Sayfası Gelen Veri:", data);
-
-    if (data) {
-      setUser(data);
-    } else {
-      console.warn("Kullanıcı verisi boş döndü.");
-      // İsteğe bağlı: Kullanıcı bulunamadıysa bir uyarı gösterilebilir
-    }
-   
-
-  } catch (error) {
-    console.error("Profil yüklenirken hata:", error);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   useEffect(() => {
     fetchUserProfile();
@@ -78,8 +79,8 @@ const fetchUserProfile = async () => {
     );
   };
 
-  const SettingItem = ({ icon, title, subtitle, color }: any) => (
-    <TouchableOpacity style={styles.settingItem}>
+  const SettingItem = ({ icon, title, subtitle, color, onPress }: any) => (
+    <TouchableOpacity style={styles.settingItem} onPress={onPress}>
       <View style={[styles.iconContainer, { backgroundColor: color }]}>
         <Ionicons name={icon} size={22} color="#444" />
       </View>
@@ -140,7 +141,15 @@ const fetchUserProfile = async () => {
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionTitle}>Profil Ayarları</Text>
           <View style={styles.cardGroup}>
-            <SettingItem icon="person-outline" title="Kişisel Bilgiler" color="#E1F5FE" />
+            <SettingItem
+              icon="person-outline"
+              title="Kişisel Bilgiler"
+              color="#E1F5FE"
+              onPress={() => router.push({
+                pathname: '/personal_details', // Sayfa yoluna göre ayarla
+                params: { userId: userId }
+              })}
+            />
             <SettingItem icon="leaf-outline" title="Cilt Günlüğüm" subtitle="Before/After fotoğraflar" color="#F3E5F5" />
             <SettingItem icon="star-outline" title="Favori Ürünlerim" color="#FFF9C4" />
           </View>
