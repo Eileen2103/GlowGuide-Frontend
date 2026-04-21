@@ -19,7 +19,7 @@ export default function LoginScreen() {
       body: JSON.stringify({ email, password }),
     });
 
-    const text = await response.text(); // HER ZAMAN TEXT OKU
+    const text = await response.text(); // HER ZAMAN TEXT OKU!
 
     console.log("RAW RESPONSE:", text);
 
