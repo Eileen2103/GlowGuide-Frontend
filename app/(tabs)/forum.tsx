@@ -2,16 +2,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  FlatList,
-  Image,
-  Modal,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    FlatList,
+    Image,
+    Modal,
+    SafeAreaView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { BASE_URL } from '../../service/apiConfig';
 
@@ -19,9 +19,8 @@ interface ForumPost {
     id: number;
     title: string;
     content: string;
-    authorName: string;
-    authorSurname: string;
-    authorAvatar: string | null;
+    authorFullName: string; // authorName + Surname yerine tek alan
+    authorAvatarUrl: string | null; // DTO'daki isimlendirme
     commentCount: number;
     createdAt: string;
 }
@@ -29,10 +28,10 @@ interface ForumPost {
 export default function ForumScreen() {
     const router = useRouter();
     const { userId } = useLocalSearchParams();
-    
+
     const [posts, setPosts] = useState<ForumPost[]>([]);
     const [loading, setLoading] = useState(true);
-    
+
     // Modal ve Yeni Başlık State'leri
     const [isModalVisible, setModalVisible] = useState(false);
     const [newTitle, setNewTitle] = useState('');
@@ -45,7 +44,8 @@ export default function ForumScreen() {
     const fetchPosts = async () => {
         try {
             setLoading(true);
-            const response = await fetch(`${BASE_URL}/posts`); // Backend endpoint'inize göre güncelleyin
+            // Backend'deki @GetMapping("/all") endpoint'ine gidiyoruz
+            const response = await fetch(`${BASE_URL}/posts/getAll`);
             if (response.ok) {
                 const data = await response.json();
                 setPosts(data);
@@ -58,14 +58,20 @@ export default function ForumScreen() {
     };
 
     const handleCreatePost = async () => {
+        if (!newTitle || !newContent) {
+            alert("Lütfen tüm alanları doldurun");
+            return;
+        }
+
         try {
-            const response = await fetch(`${BASE_URL}/posts`, {
+            // Backend'deki @PostMapping("/add/{userId}") endpoint'ine gidiyoruz
+            const response = await fetch(`${BASE_URL}/posts/add/${userId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     title: newTitle,
-                    content: newContent,
-                    userId: userId
+                    content: newContent
+                    // createdAt'i sildik, backend LocalDateTime.now() ile hallediyor
                 }),
             });
 
@@ -73,7 +79,7 @@ export default function ForumScreen() {
                 setModalVisible(false);
                 setNewTitle('');
                 setNewContent('');
-                fetchPosts(); // Listeyi yenile
+                fetchPosts(); // Yeni post gelince listeyi tazele
             }
         } catch (error) {
             console.error("Post oluşturulurken hata:", error);
@@ -81,16 +87,18 @@ export default function ForumScreen() {
     };
 
     const renderPostItem = ({ item }: { item: ForumPost }) => (
-        <TouchableOpacity 
+        <TouchableOpacity
             style={styles.postCard}
-            onPress={() => router.push({ pathname: "/", params: { postId: item.id } })}
+            // Navigasyon için "/" yerine detay sayfasına (varsa) yönlendirme yapılabilir
+            onPress={() => console.log("Post ID:", item.id)}
         >
             <View style={styles.cardHeader}>
-                <Image 
-                    source={{ uri: item.authorAvatar || 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png' }} 
-                    style={styles.authorAvatar} 
+                <Image
+                    source={{ uri: item.authorAvatarUrl || 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png' }}
+                    style={styles.authorAvatar}
                 />
-                <Text style={styles.authorName}>{item.authorName} {item.authorSurname}</Text>
+                {/* Backend'den gelen birleşik isim */}
+                <Text style={styles.authorName}>{item.authorFullName}</Text>
                 <TouchableOpacity style={styles.replyIcon}>
                     <Ionicons name="arrow-undo-outline" size={20} color="#888" />
                 </TouchableOpacity>
@@ -100,6 +108,7 @@ export default function ForumScreen() {
             <Text style={styles.postContent} numberOfLines={3}>{item.content}</Text>
 
             <View style={styles.cardFooter}>
+                {/* Backend'den formatlı String olarak geliyor */}
                 <Text style={styles.timeText}>{item.createdAt}</Text>
                 <Text style={styles.commentText}>{item.commentCount} yorum</Text>
             </View>
@@ -121,7 +130,7 @@ export default function ForumScreen() {
 
             {/* Aksiyon Barı */}
             <View style={styles.actionBar}>
-                <TouchableOpacity 
+                <TouchableOpacity
                     style={styles.addPostButton}
                     onPress={() => setModalVisible(true)}
                 >
@@ -152,16 +161,16 @@ export default function ForumScreen() {
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Yeni Başlık Oluştur</Text>
-                        <TextInput 
-                            placeholder="Başlık" 
-                            style={styles.modalInput} 
+                        <TextInput
+                            placeholder="Başlık"
+                            style={styles.modalInput}
                             value={newTitle}
                             onChangeText={setNewTitle}
                         />
-                        <TextInput 
-                            placeholder="Sorun nedir?" 
-                            style={[styles.modalInput, styles.textArea]} 
-                            multiline 
+                        <TextInput
+                            placeholder="Sorun nedir?"
+                            style={[styles.modalInput, styles.textArea]}
+                            multiline
                             value={newContent}
                             onChangeText={setNewContent}
                         />
@@ -170,7 +179,7 @@ export default function ForumScreen() {
                                 <Text>Vazgeç</Text>
                             </TouchableOpacity>
                             <TouchableOpacity onPress={handleCreatePost} style={styles.submitBtn}>
-                                <Text style={{color: 'white'}}>Paylaş</Text>
+                                <Text style={{ color: 'white' }}>Paylaş</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
