@@ -159,7 +159,15 @@ export default function ProfileScreen() {
           <Text style={styles.sectionTitle}>Uygulama Ayarları</Text>
           <View style={styles.cardGroup}>
             <SettingItem icon="time-outline" title="Bildirimler" subtitle="PAO alertleri" color="#F5F5F5" />
-            <SettingItem icon="lock-closed-outline" title="Hesap Ayarları" color="#E8F5E9" />
+            <SettingItem
+              icon="lock-closed-outline"
+              title="Hesap Ayarları"
+              color="#E8F5E9"
+              onPress={() => router.push({
+                pathname: "/account_settings", // Dosya isminle uyumlu olmalı
+                params: { userId: userId }
+              })}
+            />
             <SettingItem icon="log-out-outline" title="Çıkış Yap" color="#FFEBEE" />
           </View>
         </View>

@@ -1,5 +1,5 @@
 // Ip adresini tek noktadan kontrol etmek için.
-const IP_ADDRESS = '192.168.1.102'; 
+const IP_ADDRESS = '192.168.1.100'; 
 const PORT = '8080';
 
 // BASE_URL'i tam bir adres olarak oluştur expo go içiv
