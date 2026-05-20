@@ -6,13 +6,13 @@ import {
     FlatList,
     Image,
     Modal,
-    SafeAreaView,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
     View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { BASE_URL } from '../../service/apiConfig';
 
 // 1. Backend PostResponseDto ile %100 Uyumlu Interface
@@ -38,6 +38,13 @@ export default function ForumScreen() {
     const [newTitle, setNewTitle] = useState('');
     const [newContent, setNewContent] = useState('');
 
+    // Eğer userId yoksa, login olmamış demek
+    useEffect(() => {
+        if (!userId || userId === 'undefined') {
+            router.replace('/');
+        }
+    }, [userId, router]);
+
     useEffect(() => {
         fetchPosts();
     }, []);
@@ -61,8 +68,8 @@ export default function ForumScreen() {
             setLoading(false);
         }
     };
-    // 3. POST API İsteği (Yeni Başlık Açma)
-    // 2. userId kontrolünü sadece post atarken yapıyoruz (Güvenlik Duvarı)
+    // POST API İsteği (Yeni Başlık Açma)
+    //  userId kontrolünü sadece post atarken yap (Güvenlik Duvarı)
     const handleCreatePost = async () => {
         // Negatif Test Koruması
         if (!userId || userId === 'undefined') {
