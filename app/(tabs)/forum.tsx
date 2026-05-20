@@ -15,14 +15,15 @@ import {
 } from 'react-native';
 import { BASE_URL } from '../../service/apiConfig';
 
+// 1. Backend PostResponseDto ile %100 Uyumlu Interface
 interface ForumPost {
     id: number;
     title: string;
     content: string;
-    authorFullName: string; // authorName + Surname yerine tek alan
-    authorAvatarUrl: string | null; // DTO'daki isimlendirme
+    authorFullName: string;   // Backend'den birleşik geliyor
+    authorAvatarUrl: string | null; // DTO'daki tam isim
     commentCount: number;
-    createdAt: string;
+    createdAt: string;        // Backend'den String formatında geliyor
 }
 
 export default function ForumScreen() {
@@ -32,7 +33,6 @@ export default function ForumScreen() {
     const [posts, setPosts] = useState<ForumPost[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // Modal ve Yeni Başlık State'leri
     const [isModalVisible, setModalVisible] = useState(false);
     const [newTitle, setNewTitle] = useState('');
     const [newContent, setNewContent] = useState('');
@@ -44,34 +44,43 @@ export default function ForumScreen() {
     const fetchPosts = async () => {
         try {
             setLoading(true);
-            // Backend'deki @GetMapping("/all") endpoint'ine gidiyoruz
+
+
             const response = await fetch(`${BASE_URL}/posts/getAll`);
+
             if (response.ok) {
                 const data = await response.json();
                 setPosts(data);
+            } else {
+                console.error("Backend hata kodu döndürdü:", response.status);
             }
         } catch (error) {
-            console.error("Postlar yüklenirken hata:", error);
+            console.error("Postlar yüklenirken ağ hatası:", error);
         } finally {
             setLoading(false);
         }
     };
-
+    // 3. POST API İsteği (Yeni Başlık Açma)
+    // 2. userId kontrolünü sadece post atarken yapıyoruz (Güvenlik Duvarı)
     const handleCreatePost = async () => {
-        if (!newTitle || !newContent) {
+        // Negatif Test Koruması
+        if (!userId || userId === 'undefined') {
+            alert("Oturum bilginiz bulunamadı. Lütfen tekrar giriş yapın.");
+            return;
+        }
+
+        if (!newTitle.trim() || !newContent.trim()) {
             alert("Lütfen tüm alanları doldurun");
             return;
         }
 
         try {
-            // Backend'deki @PostMapping("/add/{userId}") endpoint'ine gidiyoruz
             const response = await fetch(`${BASE_URL}/posts/add/${userId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     title: newTitle,
                     content: newContent
-                    // createdAt'i sildik, backend LocalDateTime.now() ile hallediyor
                 }),
             });
 
@@ -79,25 +88,26 @@ export default function ForumScreen() {
                 setModalVisible(false);
                 setNewTitle('');
                 setNewContent('');
-                fetchPosts(); // Yeni post gelince listeyi tazele
+                fetchPosts();
             }
         } catch (error) {
             console.error("Post oluşturulurken hata:", error);
         }
     };
 
+    // 4. Kart Tasarımı (Render Item)
     const renderPostItem = ({ item }: { item: ForumPost }) => (
         <TouchableOpacity
             style={styles.postCard}
-            // Navigasyon için "/" yerine detay sayfasına (varsa) yönlendirme yapılabilir
-            onPress={() => console.log("Post ID:", item.id)}
+            // "/forum/post-detail" yerine hata mesajında var olduğunu gördüğüm "/(tabs)/post_detail" rotasını kullan
+            onPress={() => router.push({ pathname: "/post_detail", params: { postId: item.id, userId: userId } })}
         >
             <View style={styles.cardHeader}>
                 <Image
                     source={{ uri: item.authorAvatarUrl || 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png' }}
                     style={styles.authorAvatar}
                 />
-                {/* Backend'den gelen birleşik isim */}
+                {/* DTO'dan gelen düzleştirilmiş isim */}
                 <Text style={styles.authorName}>{item.authorFullName}</Text>
                 <TouchableOpacity style={styles.replyIcon}>
                     <Ionicons name="arrow-undo-outline" size={20} color="#888" />
@@ -108,7 +118,6 @@ export default function ForumScreen() {
             <Text style={styles.postContent} numberOfLines={3}>{item.content}</Text>
 
             <View style={styles.cardFooter}>
-                {/* Backend'den formatlı String olarak geliyor */}
                 <Text style={styles.timeText}>{item.createdAt}</Text>
                 <Text style={styles.commentText}>{item.commentCount} yorum</Text>
             </View>
@@ -117,7 +126,7 @@ export default function ForumScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-            {/* Header Bölümü */}
+            {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => router.back()}>
                     <Ionicons name="arrow-back" size={24} color="#333" />
@@ -144,6 +153,7 @@ export default function ForumScreen() {
                 </TouchableOpacity>
             </View>
 
+            {/* Yükleniyor check'i */}
             {loading ? (
                 <ActivityIndicator size="large" color="#5D4F8D" style={{ flex: 1 }} />
             ) : (
@@ -188,6 +198,8 @@ export default function ForumScreen() {
         </SafeAreaView>
     );
 }
+
+// ... (Paylaştığın stiller aynen kalıyor)
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#E1D7F2' },
