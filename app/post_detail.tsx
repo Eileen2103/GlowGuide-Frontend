@@ -33,6 +33,11 @@ export default function PostDetailScreen() {
     const [loading, setLoading] = useState(true);
     const [newComment, setNewComment] = useState('');
 
+
+
+    // QA Test Logu
+    console.log("PostDetail Sayfasına Gelen Parametreler -> PostID:", postId, "UserID:", userId);
+
     useEffect(() => {
         fetchComments();
     }, [postId]);
@@ -67,10 +72,35 @@ export default function PostDetailScreen() {
 
             if (response.ok) {
                 setNewComment('');
-                fetchComments(); // Listeyi yenile ki yeni yorum anında düşsün
+                fetchComments(); // Listeyi yenile yeni yorum anında düşsün
             }
         } catch (error) {
             console.error("Yorum gönderilirken hata oluştu:", error);
+        }
+    };
+
+    // Yorum Beğenme / Beğeniyi Geri Alma (Toggle Like)
+    const handleToggleLike = async (commentId: number) => {
+        if (!userId || userId === 'undefined') {
+            alert("Beğeni yapabilmek için oturum açmış olmanız gerekir.");
+            return;
+        }
+
+        try {
+            // Backend'de yazdığımız endpoint: /comments/{commentId}/like/{userId}
+            const response = await fetch(`${BASE_URL}/comments/${commentId}/like/${userId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (response.ok) {
+                // Başarılıysa yorumları yeniden çek ki beğeni sayısı (+1 veya -1) anında güncelle
+                fetchComments();
+            } else {
+                console.error("Beğeni işlemi başarısız oldu.");
+            }
+        } catch (error) {
+            console.error("Beğeni isteği atılırken hata:", error);
         }
     };
 
@@ -83,14 +113,17 @@ export default function PostDetailScreen() {
                     style={styles.avatar}
                 />
                 <View style={styles.authorInfo}>
-                    <Text style={styles.authorName}>{item.authorFullName}</Text>
-                    <Text style={styles.timeText}>{item.createdAt}</Text>
+                    <Text style={styles.authorName}>{String(item.authorFullName || 'Anonim Geliştirici')}</Text>
+                    <Text style={styles.timeText}>{String(item.createdAt || '')}</Text>
                 </View>
 
-                {/* Beğeni Butonu */}
-                <TouchableOpacity style={styles.likeButton}>
+                {/* BEĞENİ BUTONU GÜNCELLEMESİ */}
+                <TouchableOpacity
+                    style={styles.likeButton}
+                    onPress={() => handleToggleLike(item.id)} // Tıklanınca yorumun ID'sini gönderiyoruz
+                >
                     <Ionicons name="heart-outline" size={16} color="#888" />
-                    <Text style={styles.likeCountText}>{item.likeCount}</Text>
+                    <Text style={styles.likeCountText}>{String(item.likeCount ?? 0)}</Text>
                 </TouchableOpacity>
             </View>
             <Text style={styles.commentContent}>{item.content}</Text>
@@ -99,16 +132,16 @@ export default function PostDetailScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-            {/* Header */}
+            {/* Header - Tertemiz ve Yorum Satırsız */}
             <View style={styles.header}>
                 <TouchableOpacity
                     style={styles.backButton}
-                    onPress={() => router.push({ pathname: "/(tabs)/forum", params: { userId: userId } })} // Kendi klasör yapına göre ana forum rotasını yazmalısın
+                    onPress={() => router.push({ pathname: "/(tabs)/forum", params: { userId: userId } })}
                 >
                     <Ionicons name="arrow-back" size={24} color="#333" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Yorumlar</Text>
-                <View style={{ width: 40 }} /> {/* Sağ tarafta da bir boşluk bırakarak başlığı tam ortals*/}
+                <View style={styles.headerRightPlaceholder} />
             </View>
 
             {/* Yorum Listesi */}
@@ -120,13 +153,14 @@ export default function PostDetailScreen() {
                     renderItem={renderCommentItem}
                     keyExtractor={(item) => item.id.toString()}
                     contentContainerStyle={styles.listContainer}
+                    showsVerticalScrollIndicator={false}
                     ListEmptyComponent={
                         <Text style={styles.emptyText}>Henüz yorum yapılmamış. İlk yorumu sen yap!</Text>
                     }
                 />
             )}
 
-            {/* Yorum Yazma Alanı (Klavye üstü bar) */}
+            {/* Yorum Yazma Alanı */}
             <View style={styles.inputContainer}>
                 <TextInput
                     style={styles.input}
@@ -150,7 +184,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: 15,
-        paddingVertical: 15, // Tıklama alanını dikeyde rahatlatıyoruz
+        paddingVertical: 15,
         backgroundColor: '#E1D7F2'
     },
     headerTitle: {
@@ -158,12 +192,16 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: '#333',
         textAlign: 'center',
-        flex: 1 // Başlığın ortalanmasını garanti eder
+        flex: 1
     },
     backButton: {
-        padding: 10, // Butonun etrafına görünmez bir tıklama alanı (hitbox) ekliyoruz
+        padding: 10,
         justifyContent: 'center',
         alignItems: 'center',
+        width: 50
+    },
+    headerRightPlaceholder: {
+        width: 50 // Sol taraftaki geri butonuyla tam eşit genişlikte olup başlığı kusursuz ortalar
     },
     listContainer: { padding: 20 },
     commentCard: { backgroundColor: '#FFF', padding: 15, borderRadius: 15, marginBottom: 12, elevation: 2 },

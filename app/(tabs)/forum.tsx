@@ -29,6 +29,7 @@ interface ForumPost {
 export default function ForumScreen() {
     const router = useRouter();
     const { userId } = useLocalSearchParams();
+    console.log("ForumScreen Ana Sayfasındaki userId Değeri:", userId);
 
     const [posts, setPosts] = useState<ForumPost[]>([]);
     const [loading, setLoading] = useState(true);
