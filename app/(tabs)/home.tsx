@@ -15,10 +15,17 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BASE_URL } from '../../service/apiConfig';
+import { BASE_URL, WEATHER_URL } from '../../service/apiConfig';
 
 interface RoutineState {
   [key: string]: boolean;
+}
+
+interface WeatherData {
+  temp: number;
+  description: string;
+  icon: string;
+  city: string;
 }
 
 const COLORS = {
@@ -38,14 +45,16 @@ export default function HomeScreen() {
 
   // --- 1. TÜM STATE'LER (EN ÜSTTE) ---
   const [userName, setUserName] = useState('');
- const [morningRoutine, setMorningRoutine] = useState<any[]>([]);
-const [eveningRoutine, setEveningRoutine] = useState<any[]>([]);
+  const [morningRoutine, setMorningRoutine] = useState<any[]>([]);
+  const [eveningRoutine, setEveningRoutine] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [weeklyRoutines, setWeeklyRoutines] = useState<any>({});
   const [urgentProduct, setUrgentProduct] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [isRoutineMenuVisible, setIsRoutineMenuVisible] = useState(false);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(true);
   const [newRoutine, setNewRoutine] = useState({
     description: '',
     type: 'MORNING', // Varsayılan olarak SABAH
@@ -58,61 +67,61 @@ const [eveningRoutine, setEveningRoutine] = useState<any[]>([]);
   // Hiçbir Hook (useEffect, useCallback, useFocusEffect) return ifadesinden sonra olmamalı!
 
   const fetchData = useCallback(async () => {
-  try {
-    setLoading(true);
-    console.log("İstek atılan tam URL:", `${BASE_URL}/users/${userId}`);
-    const [userRes, routineRes, productRes] = await Promise.all([
-      fetch(`${BASE_URL}/users/${userId}`),
-      fetch(`${BASE_URL}/routines/${userId}`),
-      fetch(`${BASE_URL}/products/urgent/${userId}`)
-    ]);
+    try {
+      setLoading(true);
+      console.log("İstek atılan tam URL:", `${BASE_URL}/users/${userId}`);
+      const [userRes, routineRes, productRes] = await Promise.all([
+        fetch(`${BASE_URL}/users/${userId}`),
+        fetch(`${BASE_URL}/routines/${userId}`),
+        fetch(`${BASE_URL}/products/urgent/${userId}`)
+      ]);
 
-    // --- GÜVENLİ PARSE FONKSİYONU ---
-    const getJsonData = async (res: Response) => {
-      if (res.ok && res.status !== 204) {
-        const text = await res.text();
-        return text ? JSON.parse(text) : null;
+      // --- GÜVENLİ PARSE FONKSİYONU ---
+      const getJsonData = async (res: Response) => {
+        if (res.ok && res.status !== 204) {
+          const text = await res.text();
+          return text ? JSON.parse(text) : null;
+        }
+        return null;
+      };
+
+      const userData = await getJsonData(userRes);
+      const routineDataRaw = await getJsonData(routineRes);
+      const routineData: any[] = Array.isArray(routineDataRaw) ? routineDataRaw : [];
+
+      const productData = await getJsonData(productRes);
+
+      // Verileri State'e Aktar
+      if (userData) {
+        setUserName(userData.name);
       }
-      return null;
-    };
+      setUrgentProduct(productData);
 
-    const userData = await getJsonData(userRes);
-    const routineDataRaw = await getJsonData(routineRes);
-    const routineData: any[] = Array.isArray(routineDataRaw) ? routineDataRaw : [];
-    
-    const productData = await getJsonData(productRes);
+      // Rutinleri Filtrele (Sadece routineData dizi ise işlem yap)
+      const morning = routineData.filter(item => item.type === 'MORNING');
+      const evening = routineData.filter(item => item.type === 'NIGHT');
 
-    // Verileri State'e Aktar
-    if (userData) {
-      setUserName(userData.name);
+      const weekly = routineData
+        .filter(item => item.type === 'WEEKLY')
+        .reduce((acc: any, item: any) => {
+          const dayName = DAYS[item.dayOfWeek - 1] || "Diğer";
+          if (!acc[dayName]) acc[dayName] = [];
+          acc[dayName].push(item);
+          return acc;
+        }, {});
+
+      setMorningRoutine(morning as any);
+      setEveningRoutine(evening as any);
+      setWeeklyRoutines(weekly);
+
+    } catch (error) {
+      console.error("HomeScreen Veri Çekme Hatası:", error);
+      // Hata detayını daha net görmek için:
+      // Alert.alert("Hata", "Veriler yüklenirken bir sorun oluştu.");
+    } finally {
+      setLoading(false);
     }
-    setUrgentProduct(productData);
-
-    // Rutinleri Filtrele (Sadece routineData dizi ise işlem yap)
-    const morning = routineData.filter(item => item.type === 'MORNING');
-    const evening = routineData.filter(item => item.type === 'NIGHT');
-
-    const weekly = routineData
-      .filter(item => item.type === 'WEEKLY')
-      .reduce((acc: any, item: any) => {
-        const dayName = DAYS[item.dayOfWeek - 1] || "Diğer";
-        if (!acc[dayName]) acc[dayName] = [];
-        acc[dayName].push(item);
-        return acc;
-      }, {});
-
-    setMorningRoutine(morning as any);
-    setEveningRoutine(evening as any);
-    setWeeklyRoutines(weekly);
-
-  } catch (error) {
-    console.error("HomeScreen Veri Çekme Hatası:", error);
-    // Hata detayını daha net görmek için:
-    // Alert.alert("Hata", "Veriler yüklenirken bir sorun oluştu.");
-  } finally {
-    setLoading(false);
-  }
-}, [userId]);
+  }, [userId]);
 
 
 
@@ -140,11 +149,40 @@ const [eveningRoutine, setEveningRoutine] = useState<any[]>([]);
     fetchData();
   }, [fetchData]);
 
+  useEffect(() => {
+    fetchWeather();
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       fetchUrgentProduct();
     }, [fetchUrgentProduct])
   );
+
+
+  const fetchWeather = async () => {
+    try {
+      setWeatherLoading(true);
+      const response = await fetch(WEATHER_URL);
+      if (response.ok) {
+        const data = await response.json();
+
+        // API'den gelen karmaşık JSON'dan sadece bize lazım olanları ayıklıyoruz (Data Parsing)
+        setWeather({
+          temp: Math.round(data.main.temp), // 22.4 dereceyi 22'ye yuvarlar
+          description: data.weather[0].description, // "hafif yağmurlu" vb.
+          icon: data.weather[0].icon, // Hava durumu görsel kodu (Örn: 10d)
+          city: data.name // "Istanbul"
+        });
+      } else {
+        console.error("Hava durumu API hatası:", response.status);
+      }
+    } catch (error) {
+      console.error("Hava durumu çekilirken ağ hatası:", error);
+    } finally {
+      setWeatherLoading(false);
+    }
+  };
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -152,16 +190,16 @@ const [eveningRoutine, setEveningRoutine] = useState<any[]>([]);
     setRefreshing(false);
   }, [fetchData]);
 
- const toggleRoutine = (time: 'morning' | 'evening', id: number) => {
-  const updateList = (list: any[]) =>
-    list.map(item => item.id === id ? { ...item, completed: !item.completed } : item);
+  const toggleRoutine = (time: 'morning' | 'evening', id: number) => {
+    const updateList = (list: any[]) =>
+      list.map(item => item.id === id ? { ...item, completed: !item.completed } : item);
 
-  if (time === 'morning') {
-    setMorningRoutine(updateList(morningRoutine));
-  } else {
-    setEveningRoutine(updateList(eveningRoutine));
-  }
-};
+    if (time === 'morning') {
+      setMorningRoutine(updateList(morningRoutine));
+    } else {
+      setEveningRoutine(updateList(eveningRoutine));
+    }
+  };
 
   const RoutineItem = ({ time, name, isChecked, label, id }: any) => (
     <TouchableOpacity
@@ -258,12 +296,26 @@ const [eveningRoutine, setEveningRoutine] = useState<any[]>([]);
           <View style={styles.greetingRow}>
             <Text style={styles.greetingText}>Günün Güzel{"\n"}Geçsin,{"\n"}{userName}! ✨</Text>
             <View style={styles.weatherCard}>
-              <Text style={styles.weatherCity}>İSTANBUL</Text>
-              <Text style={styles.weatherTemp}>18°C</Text>
-              <View style={styles.weatherDetailRow}>
-                <Text style={styles.weatherDesc}>Yüksek{"\n"}Nem</Text>
-                <Ionicons name="water-outline" size={20} color="#757575" />
-              </View>
+              <Text style={styles.weatherCity}>
+                {weather ? weather.city.toUpperCase() : 'İSTANBUL'}
+              </Text>
+
+              {weatherLoading ? (
+                <ActivityIndicator size="small" color={COLORS.accent} style={{ marginVertical: 5 }} />
+              ) : weather ? (
+                <>
+                  <Text style={styles.weatherTemp}>{weather.temp}°C</Text>
+                  <View style={styles.weatherDetailRow}>
+                    <Text style={styles.weatherDesc}>
+                      {weather.description.charAt(0).toUpperCase() + weather.description.slice(1)}
+                    </Text>
+                    {/* API'den gelen duruma göre ikon basabilir veya mevcut ikonunu koruyabilirsin */}
+                    <Ionicons name="sunny-outline" size={20} color="#757575" />
+                  </View>
+                </>
+              ) : (
+                <Text style={styles.weatherDesc}>Veri Alınamadı</Text>
+              )}
             </View>
           </View>
         </View>
@@ -342,7 +394,7 @@ const [eveningRoutine, setEveningRoutine] = useState<any[]>([]);
                     {weeklyRoutines[day].map((item: any) => (
                       <RoutineItem
                         key={item.id}
-                        time="weekly" 
+                        time="weekly"
                         name={item.description}
                         isChecked={item.completed}
                         label={item.description}
@@ -357,28 +409,6 @@ const [eveningRoutine, setEveningRoutine] = useState<any[]>([]);
           </View>
 
 
-
-
-          <View style={{ marginTop: 25, marginBottom: 20 }}>
-            <Text style={styles.sectionTitle}>HAFTALIK ÖZEL BAKIM</Text>
-            {Object.keys(weeklyRoutines).length > 0 ? (
-              Object.keys(weeklyRoutines).map((day) => (
-                <View key={day} style={styles.weeklyDayContainer}>
-                  <View style={styles.dayLabelContainer}>
-                    <Ionicons name="calendar-outline" size={14} color={COLORS.accent} />
-                    <Text style={styles.dayLabelText}>{day}</Text>
-                  </View>
-                  <View style={styles.weeklyCard}>
-                    {weeklyRoutines[day].map((item: any) => (
-                      <RoutineItem key={item.id} time="weekly" name={item.description} isChecked={item.completed} label={item.description} />
-                    ))}
-                  </View>
-                </View>
-              ))
-            ) : (
-              <Text style={styles.emptyText}>Bu hafta için planlanmış özel bir bakım yok.</Text>
-            )}
-          </View>
         </View>
       </ScrollView>
       <Modal
