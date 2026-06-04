@@ -39,14 +39,14 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="products" // Dosya adın explore.tsx olduğu için name böyle kalmalı
+        name="products" 
         options={{
           title: 'Ürünlerim',
           tabBarIcon: ({ color }) => <FontAwesome5 name="shopping-bag" size={24} color={color} />,
         }}
       />
 
-      {/* PROFİL (Bunu daha sonra app/(tabs)/profile.tsx oluşturunca aktif edersin) */}
+      
       <Tabs.Screen
         name="profile"
         options={{
