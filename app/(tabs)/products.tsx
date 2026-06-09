@@ -1,4 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useGlobalSearchParams, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -31,6 +32,7 @@ export default function ProductsScreen() {
   const globalParams = useGlobalSearchParams();
   const userId = localParams.userId || globalParams.userId || '1';
 
+  // --- 1. TÜM STATE'LER ---
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,32 +41,29 @@ export default function ProductsScreen() {
   // Modal State'leri
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false); // 🎯 Güncelleme Pop-up'ı kontrolü
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Yeni Ürün Kaydı State (Picker için category Türkçe başlatıldı)
+  // Takvim State'leri
+  const [openedDate, setOpenedDate] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // Form State'leri (Kayıt ve Güncelleme için ortak şema)
   const [newProduct, setNewProduct] = useState({
     name: '',
     brand: '',
     productType: '',
     category: 'Cilt',
-    openedAt: new Date().toISOString().split('T')[0],
     paoMonths: 12
   });
-  const handleDateInput = (text: string) => {
-    // Sadece rakamları al
-    let cleaned = text.replace(/[^0-9]/g, '');
 
-    // Arayüzde kullanıcıya Gün-Ay-Yıl (14-04-2026) gösterelim
-    let displayed = cleaned;
-    if (cleaned.length > 2 && cleaned.length <= 4) {
-      displayed = `${cleaned.slice(0, 2)}-${cleaned.slice(2)}`;
-    } else if (cleaned.length > 4) {
-      displayed = `${cleaned.slice(0, 2)}-${cleaned.slice(2, 4)}-${cleaned.slice(4, 8)}`;
-    }
-
-    // Arayüz state'ini güncelle (Kullanıcı bunu görecek)
-    setNewProduct({ ...newProduct, openedAt: displayed });
+  // --- 2. YARDIMCI FONKSİYONLAR ---
+  const formatDateToBackend = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const mapCategoryToEnum = (label: string) => {
@@ -75,88 +74,172 @@ export default function ProductsScreen() {
       default: return 'SKIN';
     }
   };
-  const onRefresh = React.useCallback(async () => {
-  setRefreshing(true);
-  await fetchUserProducts(); // Verileri tekrar çek
-  setRefreshing(false);
-}, []);
 
- const fetchUserProducts = async () => {
-  try {
-    setLoading(true);
-    const response = await fetch(`${BASE_URL}/products/user/${userId}`);
-
-    // --- GÜVENLİ PARSE BAŞLIYOR ---
-    let data = [];
-    
-    if (response.ok && response.status !== 204) {
-      const text = await response.text();
-      // Eğer text doluysa parse et, boşsa boş dizi [] ata
-      data = text ? JSON.parse(text) : [];
-    } else {
-      // Sunucu 204 No Content döndüyse veya hata varsa boş dizi kabul et
-      data = [];
+  const mapEnumToCategoryLabel = (enumValue: string) => {
+    switch (enumValue?.toUpperCase()) {
+      case 'HAIR': return 'Saç';
+      case 'MAKEUP': return 'Makyaj';
+      case 'SKIN': return 'Cilt';
+      default: return 'Cilt';
     }
+  };
 
-    console.log("Çekilen Ürünler:", data);
-    
-    // Verinin her zaman bir dizi (Array) olduğundan emin oluyoruz
-    const finalData = Array.isArray(data) ? data : [];
-    
-    setProducts(finalData);
-    setFilteredProducts(finalData);
-    // --- GÜVENLİ PARSE BİTTİ ---
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    await fetchUserProducts();
+    setRefreshing(false);
+  }, []);
 
-  } catch (error) {
-    console.error("Ürünler çekilirken hata oluştu:", error);
-    // Hata durumunda boş liste göstererek uygulamanın kırılmasını önle
-    setProducts([]);
-    setFilteredProducts([]);
-  } finally {
-    setLoading(false);
-  }
-};
+  // --- 3. API OPERASYONLARI (CRUD) ---
+
+  const fetchUserProducts = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${BASE_URL}/products/user/${userId}`);
+      let data = [];
+
+      if (response.ok && response.status !== 204) {
+        const text = await response.text();
+        data = text ? JSON.parse(text) : [];
+      } else {
+        data = [];
+      }
+
+      const finalData = Array.isArray(data) ? data : [];
+      setProducts(finalData);
+      setFilteredProducts(finalData);
+      setSelectedCategory('HEPSİ'); // Listeyi tazelerken filtreyi sıfırla
+    } catch (error) {
+      console.error("Ürünler çekilirken hata oluştu:", error);
+      setProducts([]);
+      setFilteredProducts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchUserProducts();
   }, []);
 
-  const handleCategoryPress = (category: string) => {
-    setSelectedCategory(category);
-    if (category === 'HEPSİ') {
-      setFilteredProducts(products);
+  // 🎯 ÜRÜN SİLME API İSTEĞİ (Kritik QA Korumalı)
+  const handleDeleteProduct = async () => {
+    if (!selectedProduct) return;
+
+    Alert.alert(
+      "Ürünü Sil",
+      `"${selectedProduct.name}" ürününü kalıcı olarak silmek istediğine emin misin?`,
+      [
+        { text: "Vazgeç", style: "cancel" },
+        {
+          text: "Sil",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setIsModalVisible(false);
+              setLoading(true);
+
+              const response = await fetch(`${BASE_URL}/products/delete/${selectedProduct.id}`, {
+                method: 'DELETE',
+              });
+
+              if (response.ok) {
+                Alert.alert("Başarılı", "Ürün sistemden tamamen silindi.");
+                fetchUserProducts(); // Listeyi yenile
+              } else {
+                Alert.alert("Hata", "Ürün silinirken backend hata verdi.");
+              }
+            } catch (error) {
+              console.error("Silme hatası:", error);
+              Alert.alert("Hata", "Sunucu bağlantı hatası.");
+            } finally {
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // 🎯 ÜRÜN GÜNCELLEME MODALINI HAZIRLAMA (Veri Doldurma)
+  const openEditModal = () => {
+    if (!selectedProduct) return;
+    setIsModalVisible(false); // İşlem modalını kapat
+
+    // Düzenlenecek ürünün verilerini form state'ine dolduruyoruz
+    setNewProduct({
+      name: selectedProduct.name,
+      brand: selectedProduct.brand,
+      productType: selectedProduct.productType || '',
+      category: mapEnumToCategoryLabel(selectedProduct.category),
+      paoMonths: selectedProduct.paoMonths || 12
+    });
+
+    // Açılış tarihini takvim nesnesine parslıyoruz
+    if (selectedProduct.openedAt) {
+      setOpenedDate(new Date(selectedProduct.openedAt));
     } else {
-      // Backend'den gelen 'SKIN' ile senin 'SKIN' karşılaştırmanı yapıyoruz
-      const filtered = products.filter(p => p.category.toUpperCase() === category.toUpperCase());
-      setFilteredProducts(filtered);
+      setOpenedDate(new Date());
+    }
+
+    setIsEditModalVisible(true); // Güncelleme formunu aç
+  };
+
+  // 🎯 ÜRÜN GÜNCELLEME API İSTEĞİ
+  const handleUpdateProduct = async () => {
+    if (!selectedProduct) return;
+    if (!newProduct.name.trim() || !newProduct.brand.trim()) {
+      Alert.alert("Hata", "Lütfen yıldızlı alanları doldurun!");
+      return;
+    }
+
+    const productData = {
+      name: newProduct.name,
+      brand: newProduct.brand,
+      productType: newProduct.productType,
+      category: mapCategoryToEnum(newProduct.category),
+      openedAt: formatDateToBackend(openedDate),
+      paoMonths: newProduct.paoMonths
+    };
+
+    try {
+      setLoading(true);
+      setIsEditModalVisible(false);
+
+      const response = await fetch(`${BASE_URL}/products/update/${selectedProduct.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(productData),
+      });
+
+      if (response.ok) {
+        Alert.alert("Başarılı 🎉", "Ürün bilgileri başarıyla güncellendi!");
+        fetchUserProducts(); // Ekranı tazele
+      } else {
+        Alert.alert("Hata", "Güncelleme kaydedilemedi.");
+      }
+    } catch (error) {
+      console.error("Güncelleme ağ hatası:", error);
+      Alert.alert("Hata", "Sunucuya bağlanılamadı.");
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleSaveProduct = async () => {
-    let backendFormat = "";
-
-    // Eğer tarih GG-AA-YYYY formatındaysa (tire içeriyorsa)
-    if (newProduct.openedAt.includes('-')) {
-      const parts = newProduct.openedAt.split('-');
-
-      // YYYY-MM-DD kontrolü (ISO formatı zaten doğru gelmiş olabilir)
-      if (parts[0].length === 4) {
-        backendFormat = newProduct.openedAt;
-      } else {
-        // GG-AA-YYYY -> YYYY-MM-DD çevirisi
-        backendFormat = `${parts[2]}-${parts[1]}-${parts[0]}`;
-      }
+    if (!newProduct.name.trim() || !newProduct.brand.trim()) {
+      Alert.alert("Hata", "Lütfen yıldızlı alanları doldurun!");
+      return;
     }
 
     const productData = {
       ...newProduct,
-      openedAt: backendFormat,
+      openedAt: formatDateToBackend(openedDate),
       category: mapCategoryToEnum(newProduct.category),
       paoMonths: newProduct.paoMonths || 12
     };
 
     try {
-      // BURASI POST OLARAK /add/ ADRESİNE GİDİYOR (DOĞRU)
       const response = await fetch(`${BASE_URL}/products/add/${userId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -166,15 +249,34 @@ export default function ProductsScreen() {
       if (response.ok) {
         Alert.alert("Başarılı", "Yeni ürünün GlowGuide'a eklendi! ✨");
         setIsAddModalVisible(false);
-        fetchUserProducts(); // Listeyi yenile
+        setNewProduct({ name: '', brand: '', productType: '', category: 'Cilt', paoMonths: 12 });
+        setOpenedDate(new Date());
+        fetchUserProducts();
       } else {
-        const errorMsg = await response.text();
-        Alert.alert("Hata", "Ürün kaydedilemedi. Formatı kontrol edin.");
+        Alert.alert("Hata", "Ürün kaydedilemedi. Sunucu hatası.");
       }
     } catch (error) {
       Alert.alert("Hata", "Bağlantı kurulamadı.");
     }
   };
+
+  const handleCategoryPress = (category: string) => {
+    setSelectedCategory(category);
+    if (category === 'HEPSİ') {
+      setFilteredProducts(products);
+    } else {
+      const filtered = products.filter(p => p.category.toUpperCase() === category.toUpperCase());
+      setFilteredProducts(filtered);
+    }
+  };
+
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      setOpenedDate(selectedDate);
+    }
+  };
+
   const calculateExpiryDate = (openedAt: string, paoMonths: number) => {
     if (!openedAt || !paoMonths) return 'Hesaplanamadı';
     const date = new Date(openedAt);
@@ -219,7 +321,11 @@ export default function ProductsScreen() {
         ))}
       </View>
 
-      <TouchableOpacity style={styles.addButton} onPress={() => setIsAddModalVisible(true)}>
+      <TouchableOpacity style={styles.addButton} onPress={() => {
+        setNewProduct({ name: '', brand: '', productType: '', category: 'Cilt', paoMonths: 12 });
+        setOpenedDate(new Date());
+        setIsAddModalVisible(true);
+      }}>
         <Ionicons name="add-circle" size={24} color="#FFF" />
         <Text style={styles.addButtonText}>Yeni Ürün Ekle</Text>
       </TouchableOpacity>
@@ -238,7 +344,9 @@ export default function ProductsScreen() {
                 <Text style={styles.brandText}>Marka: {item.brand}</Text>
                 <View style={styles.dateRow}>
                   <Ionicons name="calendar-outline" size={12} color="#888" />
-                  <Text style={styles.dateText}> Açılış: {item.openedAt}</Text>
+                  <Text style={styles.dateText}>
+                    {" "}Açılış: {item.openedAt ? new Date(item.openedAt).toLocaleDateString('tr-TR') : 'Belirtilmemiş'}
+                  </Text>
                 </View>
                 {item.paoMonths && (
                   <View style={styles.dateRow}>
@@ -262,21 +370,26 @@ export default function ProductsScreen() {
         ListEmptyComponent={() => <Text style={{ textAlign: 'center', marginTop: 20, color: '#999' }}>Bu kategoride ürün bulunamadı.</Text>}
       />
 
-      {/* MODAL: ÜRÜN İŞLEM */}
+      {/* MODAL: ÜRÜN İŞLEM SEÇENEKLERİ */}
       <Modal animationType="slide" transparent={true} visible={isModalVisible} onRequestClose={() => setIsModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeaderIndicator} />
             <Text style={styles.modalTitle}>{selectedProduct?.name}</Text>
             <Text style={styles.modalSubtitle}>{selectedProduct?.brand}</Text>
-            <TouchableOpacity style={styles.modalButton} onPress={() => setIsModalVisible(false)}>
+
+            {/* 🎯 Tıklanınca Güncelleme Formunu Açar */}
+            <TouchableOpacity style={styles.modalButton} onPress={openEditModal}>
               <Ionicons name="pencil-sharp" size={20} color="#5D4F8D" />
               <Text style={styles.modalButtonText}>Ürünü Güncelle</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.modalButton} onPress={() => setIsModalVisible(false)}>
+
+            {/* 🎯 Tıklanınca Güvenli Silme Fonksiyonunu Tetikler */}
+            <TouchableOpacity style={styles.modalButton} onPress={handleDeleteProduct}>
               <Ionicons name="trash-outline" size={20} color="#FF5252" />
               <Text style={[styles.modalButtonText, { color: '#FF5252' }]}>Ürünü Sil</Text>
             </TouchableOpacity>
+
             <TouchableOpacity style={styles.closeButton} onPress={() => setIsModalVisible(false)}>
               <Text style={styles.closeButtonText}>Vazgeç</Text>
             </TouchableOpacity>
@@ -285,7 +398,7 @@ export default function ProductsScreen() {
       </Modal>
 
       {/* MODAL: YENİ ÜRÜN KAYDI */}
-      <Modal visible={isAddModalVisible} animationType="slide" transparent={true}>
+      <Modal visible={isAddModalVisible} animationType="slide" transparent={true} onRequestClose={() => setIsAddModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeaderIndicator} />
@@ -294,20 +407,22 @@ export default function ProductsScreen() {
             <TextInput
               style={styles.input}
               placeholder="Ürün Adı *"
+              value={newProduct.name}
               onChangeText={(txt) => setNewProduct({ ...newProduct, name: txt })}
             />
             <TextInput
               style={styles.input}
               placeholder="Marka *"
+              value={newProduct.brand}
               onChangeText={(txt) => setNewProduct({ ...newProduct, brand: txt })}
             />
             <TextInput
               style={styles.input}
               placeholder="Ürün Tipi (Örn: Serum)"
+              value={newProduct.productType}
               onChangeText={(txt) => setNewProduct({ ...newProduct, productType: txt })}
             />
 
-            {/* KATEGORİ SEÇİCİ (PICKER) */}
             <Text style={styles.formLabel}>Kategori Seçiniz:</Text>
             <View style={styles.categoryPickerRow}>
               {['Cilt', 'Saç', 'Makyaj'].map((cat) => (
@@ -328,50 +443,112 @@ export default function ProductsScreen() {
                   style={styles.input}
                   placeholder="12"
                   keyboardType="numeric"
+                  value={newProduct.paoMonths.toString()}
                   onChangeText={(txt) => setNewProduct({ ...newProduct, paoMonths: parseInt(txt) || 12 })}
                 />
               </View>
+
               <View style={{ flex: 1 }}>
                 <Text style={styles.formLabel}>Açılış Tarihi</Text>
-
-                {/* Hızlı Seçim Butonları */}
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                  <TouchableOpacity
-                    style={styles.quickDateButton}
-                    onPress={() => setNewProduct({ ...newProduct, openedAt: new Date().toISOString().split('T')[0] })}
-                  >
+                <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
+                  <TouchableOpacity style={styles.quickDateButton} onPress={() => setOpenedDate(new Date())}>
                     <Text style={styles.quickDateText}>Bugün</Text>
                   </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.quickDateButton}
-                    onPress={() => {
-                      const yesterday = new Date();
-                      yesterday.setDate(yesterday.getDate() - 1);
-                      setNewProduct({ ...newProduct, openedAt: yesterday.toISOString().split('T')[0] });
-                    }}
-                  >
+                  <TouchableOpacity style={styles.quickDateButton} onPress={() => {
+                    const yesterday = new Date();
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    setOpenedDate(yesterday);
+                  }}>
                     <Text style={styles.quickDateText}>Dün</Text>
                   </TouchableOpacity>
                 </View>
 
-                <TextInput
-                  style={styles.input}
-                  placeholder="GG-AA-YYYY"
-                  placeholderTextColor="#999"
-                  keyboardType="numeric"
-                  maxLength={10}
-                  value={newProduct.openedAt}
-                  onChangeText={handleDateInput}
-                />
+                <TouchableOpacity style={styles.datePickerSelector} onPress={() => setShowDatePicker(true)}>
+                  <Text style={styles.datePickerSelectorText}>{openedDate.toLocaleDateString('tr-TR')} 📅</Text>
+                </TouchableOpacity>
+
+                {showDatePicker && (
+                  <DateTimePicker value={openedDate} mode="date" display="default" maximumDate={new Date()} onChange={onDateChange} />
+                )}
               </View>
             </View>
 
             <TouchableOpacity style={styles.saveButton} onPress={handleSaveProduct}>
               <Text style={styles.saveButtonText}>Kaydet</Text>
             </TouchableOpacity>
-
             <TouchableOpacity onPress={() => setIsAddModalVisible(false)} style={{ marginTop: 15 }}>
+              <Text style={styles.cancelText}>Vazgeç</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 🎯 YENİ EKLENEN MODAL: ÜRÜN GÜNCELLEME FORMU */}
+      <Modal visible={isEditModalVisible} animationType="slide" transparent={true} onRequestClose={() => setIsEditModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeaderIndicator} />
+            <Text style={styles.modalTitle}>Ürün Bilgilerini Güncelle 📝</Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Ürün Adı *"
+              value={newProduct.name}
+              onChangeText={(txt) => setNewProduct({ ...newProduct, name: txt })}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Marka *"
+              value={newProduct.brand}
+              onChangeText={(txt) => setNewProduct({ ...newProduct, brand: txt })}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Ürün Tipi"
+              value={newProduct.productType}
+              onChangeText={(txt) => setNewProduct({ ...newProduct, productType: txt })}
+            />
+
+            <Text style={styles.formLabel}>Kategori Seçiniz:</Text>
+            <View style={styles.categoryPickerRow}>
+              {['Cilt', 'Saç', 'Makyaj'].map((cat) => (
+                <TouchableOpacity
+                  key={cat}
+                  style={[styles.pickerButton, newProduct.category === cat && styles.pickerButtonActive]}
+                  onPress={() => setNewProduct({ ...newProduct, category: cat })}
+                >
+                  <Text style={[styles.pickerButtonText, newProduct.category === cat && styles.pickerButtonTextActive]}>{cat}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.rowInput}>
+              <View style={{ flex: 1, marginRight: 10 }}>
+                <Text style={styles.formLabel}>PAO (Ay) *</Text>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={newProduct.paoMonths.toString()}
+                  onChangeText={(txt) => setNewProduct({ ...newProduct, paoMonths: parseInt(txt) || 12 })}
+                />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text style={styles.formLabel}>Açılış Tarihi</Text>
+                <TouchableOpacity style={[styles.datePickerSelector, { marginTop: 33 }]} onPress={() => setShowDatePicker(true)}>
+                  <Text style={styles.datePickerSelectorText}>{openedDate.toLocaleDateString('tr-TR')} 📅</Text>
+                </TouchableOpacity>
+
+                {showDatePicker && (
+                  <DateTimePicker value={openedDate} mode="date" display="default" maximumDate={new Date()} onChange={onDateChange} />
+                )}
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.saveButton} onPress={handleUpdateProduct}>
+              <Text style={styles.saveButtonText}>Değişiklikleri Kaydet</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setIsEditModalVisible(false)} style={{ marginTop: 15 }}>
               <Text style={styles.cancelText}>Vazgeç</Text>
             </TouchableOpacity>
           </View>
@@ -381,6 +558,7 @@ export default function ProductsScreen() {
   );
 }
 
+// ... Stillerin (styles) hepsi senin yazdığın haliyle aynı kalıyor, ekleme yapmaya gerek yok!
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', paddingTop: 20 },
   headerTitle: { fontSize: 28, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, color: '#333' },
@@ -391,37 +569,18 @@ const styles = StyleSheet.create({
   activeCategoryButtonText: { color: '#FFF' },
   listContainer: { paddingHorizontal: 20, paddingBottom: 100 },
   card: { flexDirection: 'row', justifyContent: 'space-between', borderRadius: 20, padding: 15, marginBottom: 15, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
-  cardLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1, // Bu çok önemli! Soldaki alanın büyümesini sağlar.
-  },
-  textContainer: {
-    marginLeft: 15,
-    flex: 1, // Yazıların sığmadığında alt satıra geçmesi veya alanı kaplaması için şart.
-  },
-  productName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    flexShrink: 1, // Uzun isimlerin puanın üstüne binmesini engeller.
-  },
+  cardLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  textContainer: { marginLeft: 15, flex: 1 },
+  productName: { fontSize: 16, fontWeight: 'bold', color: '#333', flexShrink: 1 },
   brandText: { fontSize: 13, color: '#666', marginTop: 2 },
-  cardRight: {
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    marginLeft: 10,
-    minWidth: 70, // Puan ve buton için sabit bir alan ayıralım.
-  },
+  cardRight: { alignItems: 'flex-end', justifyContent: 'space-between', marginLeft: 10, minWidth: 70 },
   scoreText: { fontSize: 14, fontWeight: '600', color: '#6C5CE7' },
   dateRow: { flexDirection: 'row', alignItems: 'center', marginTop: 3 },
   dateText: { fontSize: 13, color: '#888' },
   addButton: { backgroundColor: '#6C5CE7', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, marginHorizontal: 20, borderRadius: 15, marginBottom: 15 },
   addButtonText: { color: '#FFF', fontWeight: 'bold', marginLeft: 8 },
-
-  // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 40, alignItems: 'center' },
+  modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 40, width: '100%', alignItems: 'center' },
   modalHeaderIndicator: { width: 40, height: 5, backgroundColor: '#DDD', borderRadius: 3, marginBottom: 15 },
   modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
   modalSubtitle: { fontSize: 14, color: '#888', marginBottom: 20 },
@@ -429,8 +588,6 @@ const styles = StyleSheet.create({
   modalButtonText: { fontSize: 16, fontWeight: '600', color: '#333', marginLeft: 15 },
   closeButton: { marginTop: 20, padding: 10 },
   closeButtonText: { color: '#999', fontSize: 16, fontWeight: 'bold' },
-
-  // Form Styles
   formLabel: { fontSize: 14, fontWeight: '600', color: '#555', alignSelf: 'flex-start', marginBottom: 8, marginTop: 10 },
   input: { width: '100%', backgroundColor: '#F7F7F7', padding: 12, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: '#EEE' },
   rowInput: { flexDirection: 'row', width: '100%' },
@@ -439,20 +596,11 @@ const styles = StyleSheet.create({
   pickerButtonActive: { backgroundColor: '#5D4F8D', borderColor: '#5D4F8D' },
   pickerButtonText: { fontSize: 13, color: '#666', fontWeight: '600' },
   pickerButtonTextActive: { color: '#FFF' },
-  saveButton: { backgroundColor: '#5D4F8D', width: '100%', padding: 15, borderRadius: 12, alignItems: 'center', marginTop: 10 },
+  saveButton: { backgroundColor: '#5D4F8D', width: '100%', padding: 15, borderRadius: 12, alignItems: 'center', marginTop: 20 },
   saveButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
   cancelText: { color: '#999', fontWeight: '600' },
-  quickDateButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#F0F0F0',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#DDD',
-  },
-  quickDateText: {
-    fontSize: 12,
-    color: '#666',
-    fontWeight: '600',
-  },
+  quickDateButton: { paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#F0F0F0', borderRadius: 8, borderWidth: 1, borderColor: '#DDD' },
+  quickDateText: { fontSize: 11, color: '#666', fontWeight: '600' },
+  datePickerSelector: { backgroundColor: '#F7F7F7', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#EEE', justifyContent: 'center', alignItems: 'center', height: 48, width: '100%' },
+  datePickerSelectorText: { fontSize: 14, color: '#333', fontWeight: '600' }
 });
