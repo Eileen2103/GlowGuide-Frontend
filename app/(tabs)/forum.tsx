@@ -15,30 +15,36 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BASE_URL } from '../../service/apiConfig';
 
-// 1. Backend PostResponseDto ile %100 Uyumlu Interface
 interface ForumPost {
     id: number;
     title: string;
     content: string;
-    authorFullName: string;   // Backend'den birleşik geliyor
-    authorAvatarUrl: string | null; // DTO'daki tam isim
+    authorFullName: string;   
+    authorAvatarUrl: string | null; 
     commentCount: number;
-    createdAt: string;        // Backend'den String formatında geliyor
+    createdAt: string;        
 }
+
+// 🎯 Filtreleme Seçenekleri Tipi
+type FilterType = 'NEWEST' | 'OLDEST';
 
 export default function ForumScreen() {
     const router = useRouter();
     const { userId } = useLocalSearchParams();
     console.log("ForumScreen Ana Sayfasındaki userId Değeri:", userId);
 
+    // --- 1. TÜM STATE'LER ---
     const [posts, setPosts] = useState<ForumPost[]>([]);
+    const [filteredPosts, setFilteredPosts] = useState<ForumPost[]>([]); // 🎯 Ekrana basılacak filtrelenmiş liste
     const [loading, setLoading] = useState(true);
 
     const [isModalVisible, setModalVisible] = useState(false);
+    const [isFilterModalVisible, setFilterModalVisible] = useState(false); // 🎯 Filtre penceresi kontrolü
+    const [currentFilter, setCurrentFilter] = useState<FilterType>('NEWEST'); // 🎯 Varsayılan filtre: En Yeni
+    
     const [newTitle, setNewTitle] = useState('');
     const [newContent, setNewContent] = useState('');
 
-    // Eğer userId yoksa, login olmamış demek
     useEffect(() => {
         if (!userId || userId === 'undefined') {
             router.replace('/');
@@ -49,11 +55,16 @@ export default function ForumScreen() {
         fetchPosts();
     }, []);
 
+    // 🎯 Filtre değiştiğinde veya post listesi güncellendiğinde tetiklenen sıralama motoru
+    useEffect(() => {
+        applyDateFilter(posts, currentFilter);
+    }, [currentFilter, posts]);
+
+    // --- 2. FONKSİYONLAR ---
+
     const fetchPosts = async () => {
         try {
             setLoading(true);
-
-
             const response = await fetch(`${BASE_URL}/posts/getAll`);
 
             if (response.ok) {
@@ -68,10 +79,27 @@ export default function ForumScreen() {
             setLoading(false);
         }
     };
-    // POST API İsteği (Yeni Başlık Açma)
-    //  userId kontrolünü sadece post atarken yap (Güvenlik Duvarı)
+
+    // 🎯 QA Güvenli Tarih Sıralama Algoritması
+    const applyDateFilter = (allPosts: ForumPost[], filter: FilterType) => {
+        let sorted = [...allPosts];
+        
+        sorted.sort((a, b) => {
+            const dateA = new Date(a.createdAt).getTime();
+            const dateB = new Date(b.createdAt).getTime();
+            
+            // Eğer tarihler parse edilemezse fallback olarak ID'leri kıyasla (Çökme Koruması)
+            if (isNaN(dateA) || isNaN(dateB)) {
+                return filter === 'NEWEST' ? b.id - a.id : a.id - b.id;
+            }
+
+            return filter === 'NEWEST' ? dateB - dateA : dateA - dateB;
+        });
+
+        setFilteredPosts(sorted);
+    };
+
     const handleCreatePost = async () => {
-        // Negatif Test Koruması
         if (!userId || userId === 'undefined') {
             alert("Oturum bilginiz bulunamadı. Lütfen tekrar giriş yapın.");
             return;
@@ -103,11 +131,9 @@ export default function ForumScreen() {
         }
     };
 
-    // 4. Kart Tasarımı (Render Item)
     const renderPostItem = ({ item }: { item: ForumPost }) => (
         <TouchableOpacity
             style={styles.postCard}
-            // "/forum/post-detail" yerine hata mesajında var olduğunu gördüğüm "/(tabs)/post_detail" rotasını kullan
             onPress={() => router.push({ pathname: "/post_detail", params: { postId: item.id, userId: userId } })}
         >
             <View style={styles.cardHeader}>
@@ -115,7 +141,6 @@ export default function ForumScreen() {
                     source={{ uri: item.authorAvatarUrl || 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png' }}
                     style={styles.authorAvatar}
                 />
-                {/* DTO'dan gelen düzleştirilmiş isim */}
                 <Text style={styles.authorName}>{item.authorFullName}</Text>
                 <TouchableOpacity style={styles.replyIcon}>
                     <Ionicons name="arrow-undo-outline" size={20} color="#888" />
@@ -140,9 +165,6 @@ export default function ForumScreen() {
                     <Ionicons name="arrow-back" size={24} color="#333" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Topluluk Sayfası</Text>
-                <TouchableOpacity style={styles.searchCircle}>
-                    <Ionicons name="search" size={20} color="#333" />
-                </TouchableOpacity>
             </View>
 
             {/* Aksiyon Barı */}
@@ -155,9 +177,19 @@ export default function ForumScreen() {
                     <Text style={styles.addPostText}>Başlık Aç</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.filterButton}>
-                    <Ionicons name="options-outline" size={20} color="#333" />
-                    <Text style={styles.filterText}>Filtrele</Text>
+                {/* 🎯 Filtrele Butonu Tetikleyicisi */}
+                <TouchableOpacity 
+                    style={styles.filterButton}
+                    onPress={() => setFilterModalVisible(true)}
+                >
+                    <Ionicons 
+                        name={currentFilter === 'NEWEST' ? "trending-up-outline" : "trending-down-outline"} 
+                        size={20} 
+                        color="#5D4F8D" 
+                    />
+                    <Text style={[styles.filterText, { color: '#5D4F8D', fontWeight: 'bold' }]}>
+                        {currentFilter === 'NEWEST' ? 'En Yeni' : 'En Eski'}
+                    </Text>
                 </TouchableOpacity>
             </View>
 
@@ -166,7 +198,7 @@ export default function ForumScreen() {
                 <ActivityIndicator size="large" color="#5D4F8D" style={{ flex: 1 }} />
             ) : (
                 <FlatList
-                    data={posts}
+                    data={filteredPosts} // 🎯 Buraya artık sıralanmış listeyi besliyoruz
                     renderItem={renderPostItem}
                     keyExtractor={(item) => item.id.toString()}
                     contentContainerStyle={styles.listContainer}
@@ -203,11 +235,52 @@ export default function ForumScreen() {
                     </View>
                 </View>
             </Modal>
+
+            {/* 🎯 YENİ EKLENEN: Tarih Filtreleme Seçim Penceresi (Modal) */}
+            <Modal
+                visible={isFilterModalVisible}
+                animationType="fade"
+                transparent={true}
+                onRequestClose={() => setFilterModalVisible(false)}
+            >
+                <View style={styles.filterModalOverlay}>
+                    <View style={styles.filterModalContent}>
+                        <Text style={styles.filterModalTitle}>Sıralama Seçeneği</Text>
+                        
+                        <TouchableOpacity 
+                            style={[styles.filterOption, currentFilter === 'NEWEST' && styles.filterOptionActive]}
+                            onPress={() => {
+                                setCurrentFilter('NEWEST');
+                                setFilterModalVisible(false);
+                            }}
+                        >
+                            <Ionicons name="time-outline" size={20} color={currentFilter === 'NEWEST' ? '#5D4F8D' : '#666'} />
+                            <Text style={[styles.filterOptionText, currentFilter === 'NEWEST' && styles.filterOptionTextActive]}>En Yeni Başlıklar</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                            style={[styles.filterOption, currentFilter === 'OLDEST' && styles.filterOptionActive]}
+                            onPress={() => {
+                                setCurrentFilter('OLDEST');
+                                setFilterModalVisible(false);
+                            }}
+                        >
+                            <Ionicons name="hourglass-outline" size={20} color={currentFilter === 'OLDEST' ? '#5D4F8D' : '#666'} />
+                            <Text style={[styles.filterOptionText, currentFilter === 'OLDEST' && styles.filterOptionTextActive]}>En Eski Başlıklar</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                            style={styles.filterCloseBtn}
+                            onPress={() => setFilterModalVisible(false)}
+                        >
+                            <Text style={styles.filterCloseBtnText}>Kapat</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
-
-// ... (Paylaştığın stiller aynen kalıyor)
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#E1D7F2' },
@@ -217,8 +290,8 @@ const styles = StyleSheet.create({
     actionBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginVertical: 15 },
     addPostButton: { backgroundColor: '#A594F1', flexDirection: 'row', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, alignItems: 'center' },
     addPostText: { color: 'white', fontWeight: '600', marginLeft: 5 },
-    filterButton: { flexDirection: 'row', alignItems: 'center' },
-    filterText: { marginLeft: 5, color: '#333', fontWeight: '500' },
+    filterButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15, elevation: 2 },
+    filterText: { marginLeft: 5, fontSize: 13 },
     listContainer: { paddingHorizontal: 20, paddingBottom: 20 },
     postCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 15, marginBottom: 15, elevation: 3 },
     cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
@@ -230,7 +303,6 @@ const styles = StyleSheet.create({
     timeText: { fontSize: 12, color: '#999' },
     commentText: { fontSize: 12, color: '#999', fontWeight: '600' },
     replyIcon: { padding: 5 },
-    // Modal Stilleri
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
     modalContent: { backgroundColor: 'white', borderRadius: 25, padding: 20 },
     modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
@@ -238,5 +310,16 @@ const styles = StyleSheet.create({
     textArea: { height: 100, textAlignVertical: 'top' },
     modalButtons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
     cancelBtn: { padding: 12, flex: 1, alignItems: 'center' },
-    submitBtn: { backgroundColor: '#5D4F8D', padding: 12, flex: 1, alignItems: 'center', borderRadius: 10 }
+    submitBtn: { backgroundColor: '#5D4F8D', padding: 12, flex: 1, alignItems: 'center', borderRadius: 10 },
+
+    // 🎯 YENİ EKLENEN: Filtre Modalı Tasarım Stilleri
+    filterModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 30 },
+    filterModalContent: { backgroundColor: '#FFF', borderRadius: 24, padding: 25, width: '100%', elevation: 5 },
+    filterModalTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 20, textAlign: 'center' },
+    filterOption: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 14, marginBottom: 10, backgroundColor: '#F8F5FC' },
+    filterOptionActive: { backgroundColor: '#E1D7F2', borderWidth: 1, borderColor: '#5D4F8D' },
+    filterOptionText: { marginLeft: 12, fontSize: 15, fontWeight: '500', color: '#555' },
+    filterOptionTextActive: { color: '#5D4F8D', fontWeight: 'bold' },
+    filterCloseBtn: { marginTop: 15, alignSelf: 'center', padding: 10 },
+    filterCloseBtnText: { color: '#999', fontSize: 15, fontWeight: '600' }
 });

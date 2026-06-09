@@ -1,8 +1,8 @@
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 
 import { useGlobalSearchParams, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { BASE_URL } from '../../service/apiConfig';
 
 // Backend UserResponseDto ile birebir uyumlu interface
@@ -25,6 +25,15 @@ export default function ProfileScreen() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+
+  const SKIN_TYPE_MAP: { [key: string]: string } = {
+    'DRY': 'Kuru',
+    'OILY': 'Yağlı',
+    'SENSITIVE': 'Hassas',
+    'COMBINATION': 'Karma',
+    'NORMAL': 'Normal'
+  };
+
 
   // Profil verilerini çekme
   const fetchUserProfile = async () => {
@@ -79,6 +88,38 @@ export default function ProfileScreen() {
     );
   };
 
+  const [modalVisible, setModalVisible] = useState(false);
+
+  // cilt tipini Backend'e Güncelleyen QA Garantili Metot
+  const updateSkinType = async (selectedENType: string) => {
+    try {
+      setModalVisible(false);
+      setLoading(true);
+
+      const response = await fetch(`${BASE_URL}/users/update/skinType/${userId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ skinType: selectedENType })
+      });
+
+      if (response.ok) {
+        // Ekranda anlık güncellenmesi için local state'i tazele
+        if (user) {
+          setUser({ ...user, skinType: selectedENType });
+        }
+        console.log("QA KONTROL: Cilt tipi başarıyla güncellendi:", selectedENType);
+      } else {
+        console.error("Cilt tipi güncellenirken backend hata döndürdü.");
+      }
+    } catch (error) {
+      console.error("Cilt tipi güncelleme ağ hatası:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const SettingItem = ({ icon, title, subtitle, color, onPress }: any) => (
     <TouchableOpacity style={styles.settingItem} onPress={onPress}>
       <View style={[styles.iconContainer, { backgroundColor: color }]}>
@@ -102,9 +143,7 @@ export default function ProfileScreen() {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerBrand}>GlowGuide</Text>
-          <TouchableOpacity>
-            <Feather name="edit-3" size={20} color="black" />
-          </TouchableOpacity>
+
         </View>
         <Text style={styles.headerSubtitle}>Profilim ve Ayarlar</Text>
 
@@ -130,11 +169,15 @@ export default function ProfileScreen() {
           <Text style={styles.userName}>
             {user ? `${user.name} ${user.surname}` : 'Yükleniyor...'}
           </Text>
-          <View style={styles.tagContainer}>
+          <TouchableOpacity
+            style={styles.tagContainer}
+            onPress={() => setModalVisible(true)} // Basınca seçim modalı açılacak
+          >
             <Text style={styles.tagText}>
-              Cilt Tipi: {user?.skinType || 'Belirtilmemiş'}
+              Cilt Tipi: {user?.skinType ? (SKIN_TYPE_MAP[user.skinType] || user.skinType) : 'Belirtilmemiş'} 📝
             </Text>
-          </View>
+          </TouchableOpacity>
+
         </View>
 
         {/* Ayarlar Listesi */}
@@ -151,7 +194,7 @@ export default function ProfileScreen() {
               })}
             />
             <SettingItem icon="leaf-outline" title="Cilt Günlüğüm" subtitle="Before/After fotoğraflar" color="#F3E5F5" />
-            <SettingItem icon="star-outline" title="Favori Ürünlerim" color="#FFF9C4" />
+
           </View>
         </View>
 
@@ -172,6 +215,36 @@ export default function ProfileScreen() {
           </View>
         </View>
       </ScrollView>
+      {/* 🎯 CİLT TİPİ SEÇİM PENCERESİ */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Cilt Tipinizi Seçin</Text>
+
+            {Object.keys(SKIN_TYPE_MAP).map((key) => (
+              <TouchableOpacity
+                key={key}
+                style={styles.modalOption}
+                onPress={() => updateSkinType(key)}
+              >
+                <Text style={styles.modalOptionText}>{SKIN_TYPE_MAP[key]}</Text>
+              </TouchableOpacity>
+            ))}
+
+            <TouchableOpacity
+              style={[styles.modalOption, { backgroundColor: '#FFEBEE', marginTop: 10 }]}
+              onPress={() => setModalVisible(false)}
+            >
+              <Text style={[styles.modalOptionText, { color: '#C62828' }]}>Vazgeç</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -209,5 +282,36 @@ const styles = StyleSheet.create({
     width: 80, // avatarContainer ile aynı genişlik
     height: 80, // avatarContainer ile aynı yükseklik
     borderRadius: 40, // Tam yuvarlak
+  },
+  // ... mevcut stillerinin altına ekle:
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFF',
+    padding: 25,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20,
+    color: '#333',
+  },
+  modalOption: {
+    paddingVertical: 15,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+    borderRadius: 10,
+  },
+  modalOptionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#5D4F8D',
   },
 });

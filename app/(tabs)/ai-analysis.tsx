@@ -14,9 +14,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BASE_URL } from '../../service/apiConfig';
 
+
+
 export default function AIAssistantScreen() {
     const router = useRouter();
     const { userId } = useLocalSearchParams();
+    const validUserId = userId && userId !== 'undefined' ? userId : '1';
 
     const [loading, setLoading] = useState(false);
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -53,27 +56,59 @@ export default function AIAssistantScreen() {
         try {
             setLoading(true);
 
+
+
             //  Şu anki backend endpoinr sadece string prompt alıyor.
-            // Fotoğrafı multipart/form-data ile göndermek için ileride backend'e @RequestParam("image") MultipartFile ekle
-            // Şimdilik test amaçlı backend'e "Fotoğraf başarıyla yakalandı, içerik analizi yapılıyor" promptu simüle ediyoruz:
+            // Fotoğrafı multipart/form-data ile göndermek için ileride backend'e @RequestParam("image") MultipartFile eklenebilir.
+            // Şimdilik test amaçlı backend'e "Fotoğraf başarıyla yakalandı, içerik analizi yapılıyor" promptu simüle et
             const testPrompt = "Bir kozmetik ürününün içindekiler listesi fotoğrafı çekildi. Bana bu içeriklerin genel zararlarını özetle.";
 
-            const response = await fetch(`${BASE_URL}/gemini/test?prompt=${encodeURIComponent(testPrompt)}`);
+            const formData = new FormData();
+            const uriParts = uri.split('/');
+            const fileName = uriParts[uriParts.length - 1];
+            const fileType = fileName.split('.').pop();
+
+            formData.append('image', {
+                uri: uri,
+                name: fileName,
+                type: `image/${fileType === 'jpg' ? 'jpeg' : fileType}`,
+            } as any);
+
+            // Orkestratörün (run metodu) beklediği diğer zorunlu parametreleri form-data'ya ekliyoruz
+            formData.append('productName', 'Tarayıcı Ürünü'); // Statik veya kullanıcıdan alınan bir isim paslanabilir
+            formData.append('imageUrl', uri); // Cihaz lokal URI'si veya uzak sunucu linki
+
+            console.log(`QA KONTROL - Sunucuya Resim Gönderiliyor. URL: ${BASE_URL}/analysis/${validUserId}`);
+
+            const response = await fetch(`${BASE_URL}/analysis/${validUserId}`, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'Accept': 'application/json',
+                    // Dikkat: 'Content-Type': 'multipart/form-data' satırını fetch kullanırken el ile YAZMIYORUZ.
+                    // Tarayıcı/React Native sınırları (boundary) kendisi otomatik doldurmalıdır, yoksa backend hata verir.
+                },
+            });
 
             if (response.ok) {
-                const aiResult = await response.text();
+                // 3. 🎯 8 ADIMLI ZİNCİRİN SONUCU (AnalysisResultDto)
+                const aiResultDto = await response.json();
+                console.log("QA KONTROL - Pipeline Başarıyla Tamamlandı:", aiResultDto);
 
-                // Analiz bittiğinde sonucu detay sayfasına paslayabiliriz
-                Alert.alert("Analiz Tamamlandı ✨", "Yaypaz zeka ürün içeriğini başarıyla inceledi!");
+                Alert.alert(
+                    "Analiz Tamamlandı ✨",
+                    `Yapay zeka ve deterministik motor ürünü inceledi!\nGenel Skor: ${aiResultDto.overallScore}/100\nRisk: ${aiResultDto.riskLevel}`
+                );
 
-                // Örnek: Sonuç sayfasına yönlendirme yapabilirsin:
-                // router.push({ pathname: "/analysis_detail", params: { result: aiResult } });
+                // Başarılıysa analiz detay sayfasına DTO'dan gelen yapay zeka özetini (summary) pasla
+                // router.push({ pathname: "/analysis_detail", params: { result: aiResultDto.summary, score: aiResultDto.overallScore } });
             } else {
-                Alert.alert("Hata", "Yapay zeka sunucusu içeriği analiz edemedi.");
+                console.error("Backend hata kodu:", response.status);
+                Alert.alert("Hata ❌", "Yapay zeka sunucusu içeriği analiz ederken bir iç hata yaşadı (500).");
             }
         } catch (error) {
             console.error("Resim analizi sırasında ağ hatası:", error);
-            Alert.alert("Ağ Hatası", "Backend sunucusuna bağlanılamadı.");
+            Alert.alert("Ağ Hatası ❌", "Backend sunucusuna bağlanılamadı. Bağlantınızı kontrol edin.");
         } finally {
             setLoading(false);
         }

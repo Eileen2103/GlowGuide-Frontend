@@ -6,7 +6,6 @@ import {
   Alert,
   Modal,
   RefreshControl,
-
   ScrollView,
   StyleSheet,
   Text,
@@ -17,15 +16,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BASE_URL, WEATHER_URL } from '../../service/apiConfig';
 
-interface RoutineState {
-  [key: string]: boolean;
-}
-
 interface WeatherData {
   temp: number;
   description: string;
   icon: string;
   city: string;
+  mainStatus: string; // Backend selamlama motoruna paslamak için (SUNNY, RAINY vb.)
 }
 
 const COLORS = {
@@ -55,25 +51,60 @@ export default function HomeScreen() {
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(true);
+  const [greeting, setGreeting] = useState<string>('Işıltınla göz kamaştırmaya hazır mısın? Hadi rutinine başlayalım! ✨');
+  
   const [newRoutine, setNewRoutine] = useState({
     description: '',
-    type: 'MORNING', // Varsayılan olarak SABAH
-    dayOfWeek: 1,    // Pazartesi
+    type: 'MORNING', 
+    dayOfWeek: 1,    
   });
 
   const DAYS = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
 
-  // --- 2. TÜM HOOK'LAR VE FONKSİYONLAR (EN ÜSTTE) ---
-  // Hiçbir Hook (useEffect, useCallback, useFocusEffect) return ifadesinden sonra olmamalı!
+  // OpenWeatherMap ana durumlarını senin backend şemana (Enum) dönüştüren QA eşleştiricisi
+  const mapWeatherToBackend = (main: string): string => {
+    if (!main) return 'GENERAL';
+    const status = main.toUpperCase();
+    if (status.includes('CLEAR') || status.includes('SUN')) return 'SUNNY';
+    if (status.includes('RAIN') || status.includes('DRIZZLE') || status.includes('THUNDER')) return 'RAINY';
+    if (status.includes('SNOW')) return 'SNOWY';
+    return 'GENERAL';
+  };
+
+  // --- 2. TÜM HOOK'LAR VE FONKSİYONLAR ---
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       console.log("İstek atılan tam URL:", `${BASE_URL}/users/${userId}`);
-      const [userRes, routineRes, productRes] = await Promise.all([
+
+      // Önce hava durumunu hızlıca öğrenelim ki selamlama isteğine parametre olarak ekleyebilelim
+      let activeWeatherType = 'GENERAL';
+      try {
+        const weatherRes = await fetch(WEATHER_URL);
+        if (weatherRes.ok) {
+          const wData = await weatherRes.json();
+          activeWeatherType = mapWeatherToBackend(wData.weather[0].main);
+          setWeather({
+            temp: Math.round(wData.main.temp),
+            description: wData.weather[0].description,
+            icon: wData.weather[0].icon,
+            city: wData.name,
+            mainStatus: activeWeatherType
+          });
+        }
+      } catch (wErr) {
+        console.error("Hava durumu ara isteğinde hata (Süreç aksatılmadı):", wErr);
+      } finally {
+        setWeatherLoading(false);
+      }
+
+      // Şimdi tüm backend verilerini (Kullanıcı, Rutinler, Son Kullanma Tarihi ve Yeni Selamlama Mesajı) eşzamanlı çekiyoruz
+      const [userRes, routineRes, productRes, greetingRes] = await Promise.all([
         fetch(`${BASE_URL}/users/${userId}`),
         fetch(`${BASE_URL}/routines/${userId}`),
-        fetch(`${BASE_URL}/products/urgent/${userId}`)
+        fetch(`${BASE_URL}/products/urgent/${userId}`),
+        fetch(`${BASE_URL}/greetings/user/${userId}?weather=${activeWeatherType}`)
       ]);
 
       // --- GÜVENLİ PARSE FONKSİYONU ---
@@ -88,8 +119,13 @@ export default function HomeScreen() {
       const userData = await getJsonData(userRes);
       const routineDataRaw = await getJsonData(routineRes);
       const routineData: any[] = Array.isArray(routineDataRaw) ? routineDataRaw : [];
-
       const productData = await getJsonData(productRes);
+
+      // Selamlama mesajı düz metin (String) döndüğü için text() olarak güvenle alıyoruz
+      if (greetingRes.ok) {
+        const greetingText = await greetingRes.text();
+        if (greetingText) setGreeting(greetingText);
+      }
 
       // Verileri State'e Aktar
       if (userData) {
@@ -97,7 +133,7 @@ export default function HomeScreen() {
       }
       setUrgentProduct(productData);
 
-      // Rutinleri Filtrele (Sadece routineData dizi ise işlem yap)
+      // Rutinleri Filtrele
       const morning = routineData.filter(item => item.type === 'MORNING');
       const evening = routineData.filter(item => item.type === 'NIGHT');
 
@@ -116,20 +152,10 @@ export default function HomeScreen() {
 
     } catch (error) {
       console.error("HomeScreen Veri Çekme Hatası:", error);
-      // Hata detayını daha net görmek için:
-      // Alert.alert("Hata", "Veriler yüklenirken bir sorun oluştu.");
     } finally {
       setLoading(false);
     }
   }, [userId]);
-
-
-
-
-
-
-
-
 
   const fetchUrgentProduct = useCallback(async () => {
     try {
@@ -149,40 +175,11 @@ export default function HomeScreen() {
     fetchData();
   }, [fetchData]);
 
-  useEffect(() => {
-    fetchWeather();
-  }, []);
-
   useFocusEffect(
     useCallback(() => {
       fetchUrgentProduct();
     }, [fetchUrgentProduct])
   );
-
-
-  const fetchWeather = async () => {
-    try {
-      setWeatherLoading(true);
-      const response = await fetch(WEATHER_URL);
-      if (response.ok) {
-        const data = await response.json();
-
-        // API'den gelen karmaşık JSON'dan sadece bize lazım olanları ayıklıyoruz (Data Parsing)
-        setWeather({
-          temp: Math.round(data.main.temp), // 22.4 dereceyi 22'ye yuvarlar
-          description: data.weather[0].description, // "hafif yağmurlu" vb.
-          icon: data.weather[0].icon, // Hava durumu görsel kodu (Örn: 10d)
-          city: data.name // "Istanbul"
-        });
-      } else {
-        console.error("Hava durumu API hatası:", response.status);
-      }
-    } catch (error) {
-      console.error("Hava durumu çekilirken ağ hatası:", error);
-    } finally {
-      setWeatherLoading(false);
-    }
-  };
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -190,29 +187,72 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, [fetchData]);
 
-  const toggleRoutine = (time: 'morning' | 'evening', id: number) => {
+  const toggleRoutine = async (time: 'morning' | 'evening' | 'weekly', id: number) => {
     const updateList = (list: any[]) =>
       list.map(item => item.id === id ? { ...item, completed: !item.completed } : item);
 
+    let currentItem: any = null;
     if (time === 'morning') {
+      currentItem = morningRoutine.find(item => item.id === id);
       setMorningRoutine(updateList(morningRoutine));
-    } else {
+    } else if (time === 'evening') {
+      currentItem = eveningRoutine.find(item => item.id === id);
       setEveningRoutine(updateList(eveningRoutine));
+    } else if (time === 'weekly') {
+      Object.keys(weeklyRoutines).forEach((day) => {
+        const found = weeklyRoutines[day].find((item: any) => item.id === id);
+        if (found) currentItem = found;
+      });
+
+      setWeeklyRoutines((prevWeekly: any) => {
+        const updatedWeekly = { ...prevWeekly };
+        Object.keys(updatedWeekly).forEach((day) => {
+          updatedWeekly[day] = updatedWeekly[day].map((item: any) =>
+            item.id === id ? { ...item, completed: !item.completed } : item
+          );
+        });
+        return updatedWeekly;
+      });
+    }
+
+    if (!currentItem) return;
+    const newStatus = !currentItem.completed; 
+
+    try {
+      const response = await fetch(`${BASE_URL}/routines/update/${id}?completed=${newStatus}`, {
+        method: 'PUT',
+      });
+
+      if (!response.ok) {
+        console.error("Backend güncelleme hatası kodu:", response.status);
+        Alert.alert("Hata", "Durum veritabanına kaydedilemedi, liste yenilenecek.");
+        fetchData(); 
+      }
+    } catch (error) {
+      console.error("Rutin güncellenirken ağ hatası:", error);
+      Alert.alert("Ağ Hatası", "Sunucu bağlantısı koptuğu için değişiklik kaydedilemedi.");
+      fetchData();
     }
   };
 
-  const RoutineItem = ({ time, name, isChecked, label, id }: any) => (
+  const RoutineItem = ({ time, isChecked, label, id }: any) => (
     <TouchableOpacity
-      style={styles.routineItem}
-      onPress={() => toggleRoutine(time, name)}
-      onLongPress={() => id && handleDeleteRoutine(id)} // ID varsa silme fonksiyonunu çağır
+      style={styles.todoStatusContainer} 
+      onPress={() => toggleRoutine(time, id)} 
+      onLongPress={() => id && handleDeleteRoutine(id)}
+      activeOpacity={0.7}
     >
-      <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
-        {isChecked && <Ionicons name="checkmark" size={16} color="white" />}
+      <View style={[styles.statusCircle, isChecked && styles.statusCircleCompleted]}>
+        {isChecked && (
+          <Ionicons name="checkmark-sharp" size={12} color="#FFF" />
+        )}
       </View>
-      <Text style={[styles.routineItemText, isChecked && styles.routineItemTextChecked]}>{label}</Text>
+      <Text style={[styles.routineText, isChecked && styles.routineTextCompleted]}>
+        {label}
+      </Text>
     </TouchableOpacity>
   );
+
   const handleDeleteRoutine = async (routineId: number) => {
     Alert.alert(
       "Rutini Sil",
@@ -229,7 +269,7 @@ export default function HomeScreen() {
               });
 
               if (response.ok) {
-                fetchData(); // Listeyi yenile
+                fetchData(); 
               } else {
                 Alert.alert("Hata", "Rutin silinemedi.");
               }
@@ -241,14 +281,16 @@ export default function HomeScreen() {
       ]
     );
   };
+
   const handleSaveRoutine = async () => {
-    // boşs isimle kaydetmeyi engelle
     if (!newRoutine.description.trim()) {
       Alert.alert("Hata", "Lütfen rutin için bir isim girin.");
       return;
     }
 
     try {
+      const finalDayOfWeek = newRoutine.type === 'WEEKLY' ? newRoutine.dayOfWeek : 0;
+
       const response = await fetch(`${BASE_URL}/routines/add/${userId}`, {
         method: 'POST',
         headers: {
@@ -257,26 +299,25 @@ export default function HomeScreen() {
         body: JSON.stringify({
           description: newRoutine.description,
           type: newRoutine.type,
-          dayOfWeek: newRoutine.dayOfWeek,
+          dayOfWeek: finalDayOfWeek,
           completed: false
         }),
       });
 
       if (response.ok) {
-        Alert.alert("Başarılı", "Yeni rutinin eklendi! ✨");
-        setIsAddModalVisible(false); // Formu kapat
-        setNewRoutine({ description: '', type: 'MORNING', dayOfWeek: 1 }); // Formu temizle
-        fetchData(); // Listeyi güncelle
+        Alert.alert("Başarılı 🎉", "Yeni bakım adımın başarıyla eklendi!");
+        setIsAddModalVisible(false); 
+        setNewRoutine({ description: '', type: 'MORNING', dayOfWeek: 1 }); 
+        fetchData(); 
       } else {
-        Alert.alert("Hata", "Rutin kaydedilemedi.");
+        Alert.alert("Hata ❌", "Rutin kaydedilemedi. Sunucu yanıt vermedi.");
       }
     } catch (error) {
       console.error("Kaydetme hatası:", error);
-      Alert.alert("Hata", "Sunucuya bağlanılamadı.");
+      Alert.alert("Hata ❌", "Sunucuya bağlanılamadı.");
     }
   };
 
-  // --- 3. KOŞULLU RENDER (TÜM HOOK'LARDAN SONRA OLMALI) ---
   if (loading) {
     return <ActivityIndicator size="large" color={COLORS.accent} style={{ flex: 1 }} />;
   }
@@ -294,7 +335,7 @@ export default function HomeScreen() {
         <View style={styles.headerSection}>
           <Text style={styles.brandTitle}>GlowGuide</Text>
           <View style={styles.greetingRow}>
-            <Text style={styles.greetingText}>Günün Güzel{"\n"}Geçsin,{"\n"}{userName}! ✨</Text>
+            
             <View style={styles.weatherCard}>
               <Text style={styles.weatherCity}>
                 {weather ? weather.city.toUpperCase() : 'İSTANBUL'}
@@ -306,17 +347,26 @@ export default function HomeScreen() {
                 <>
                   <Text style={styles.weatherTemp}>{weather.temp}°C</Text>
                   <View style={styles.weatherDetailRow}>
-                    <Text style={styles.weatherDesc}>
+                    <Text style={styles.weatherDesc} numberOfLines={1}>
                       {weather.description.charAt(0).toUpperCase() + weather.description.slice(1)}
                     </Text>
-                    {/* API'den gelen duruma göre ikon basabilir veya mevcut ikonunu koruyabilirsin */}
-                    <Ionicons name="sunny-outline" size={20} color="#757575" />
+                    <Ionicons 
+                      name={weather.mainStatus === 'SUNNY' ? "sunny-outline" : weather.mainStatus === 'RAINY' ? "rainy-outline" : "cloudy-outline"} 
+                      size={16} 
+                      color="#757575" 
+                    />
                   </View>
                 </>
               ) : (
                 <Text style={styles.weatherDesc}>Veri Alınamadı</Text>
               )}
             </View>
+          </View>
+
+          {/* Dinamik Karşılama Akıllı Mesaj Kutusu */}
+          <View style={styles.greetingBubbleCard}>
+            <Ionicons name="sparkles" size={18} color={COLORS.accent} style={{ marginRight: 8, marginTop: 2 }} />
+            <Text style={styles.greetingBubbleText}>Merhaba {userName} ! {greeting}</Text>
           </View>
         </View>
 
@@ -330,7 +380,7 @@ export default function HomeScreen() {
                   {urgentProduct.name || urgentProduct.productName} için son {urgentProduct.remainingDays} gün!
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => {/* Ürüne git */ }}>
+              <TouchableOpacity onPress={() => {}}>
                 <Ionicons name="chevron-forward" size={20} color="#666" />
               </TouchableOpacity>
             </View>
@@ -349,6 +399,7 @@ export default function HomeScreen() {
               <Ionicons name="ellipsis-horizontal" size={20} color="#9E9E9E" />
             </TouchableOpacity>
           </View>
+          
           <View style={styles.routinesRow}>
             <View style={styles.routineCard}>
               <Text style={styles.routineCardTitle}>Sabah Rutini</Text>
@@ -363,7 +414,7 @@ export default function HomeScreen() {
                 />
               ))}
             </View>
-            {/* Bunu bul ve değiştir */}
+
             <View style={styles.routineCard}>
               <Text style={styles.routineCardTitle}>Akşam Rutini</Text>
               {Array.isArray(eveningRoutine) && eveningRoutine.map((item: any) => (
@@ -378,10 +429,10 @@ export default function HomeScreen() {
               ))}
             </View>
           </View>
-          {/* --- HAFTALIK ÖZEL BAKIM --- */}
-          <View style={{ marginTop: 25, marginBottom: 20 }}>
-            <Text style={styles.sectionTitle}>HAFTALIK ÖZEL BAKIM</Text>
 
+          {/* --- HAFTALIK ÖZEL BAKIM --- */}
+          <View style={{ marginTop: 5, marginBottom: 20 }}>
+            <Text style={styles.sectionTitle}>HAFTALIK ÖZEL BAKIM</Text>
             {Object.keys(weeklyRoutines).length > 0 ? (
               Object.keys(weeklyRoutines).map((day) => (
                 <View key={day} style={styles.weeklyDayContainer}>
@@ -395,6 +446,7 @@ export default function HomeScreen() {
                       <RoutineItem
                         key={item.id}
                         time="weekly"
+                        id={item.id}
                         name={item.description}
                         isChecked={item.completed}
                         label={item.description}
@@ -407,10 +459,10 @@ export default function HomeScreen() {
               <Text style={styles.emptyText}>Bu hafta için planlanmış özel bir bakım yok.</Text>
             )}
           </View>
-
-
         </View>
       </ScrollView>
+
+      {/* RUTİN YÖNETİM MODAL */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -421,12 +473,11 @@ export default function HomeScreen() {
           <View style={styles.modalContent}>
             <View style={styles.modalHeaderIndicator} />
             <Text style={styles.modalTitle}>Rutin Yönetimi</Text>
-
             <TouchableOpacity
               style={styles.modalButton}
               onPress={() => {
                 setIsRoutineMenuVisible(false);
-                setIsAddModalVisible(true); // Burayı güncelledik
+                setIsAddModalVisible(true);
               }}
             >
               <Ionicons name="add-circle-outline" size={22} color="#5D4F8D" />
@@ -435,28 +486,74 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
-      {/* YENİ RUTİN EKLEME FORMU */}
-      <Modal visible={isAddModalVisible} animationType="slide" transparent={true}>
+
+      {/* YENİ RUTİN EKLEME MODAL */}
+      <Modal visible={isAddModalVisible} animationType="slide" transparent={true} onRequestClose={() => setIsAddModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Yeni Rutin Ekle</Text>
+          <View style={styles.modernModalContent}>
+            <View style={styles.modalHeaderIndicator} />
+            <Text style={styles.modernModalTitle}>Yeni Bakım Adımı Ekle ✨</Text>
+
+            <Text style={styles.fieldLabel}>Rutin Adı / Açıklaması</Text>
             <TextInput
-              style={styles.input}
-              placeholder="Rutin Adı (Örn: Nemlendirici)"
+              style={styles.modernInput}
+              placeholder="Örn: C Vitamini Serumu, Nemlendirici..."
+              placeholderTextColor="#999"
+              value={newRoutine.description}
               onChangeText={(text: string) => setNewRoutine({ ...newRoutine, description: text })}
             />
-            {/* Buraya zaman seçici (Sabah/Akşam) butonları ekleyebilirsin */}
-            <TouchableOpacity style={styles.saveButton} onPress={handleSaveRoutine}>
-              <Text style={styles.saveButtonText}>Kaydet</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setIsAddModalVisible(false)}>
-              <Text style={{ marginTop: 15, color: '#999' }}>Vazgeç</Text>
-            </TouchableOpacity>
+
+            <Text style={styles.fieldLabel}>Ne Zaman Uygulanacak?</Text>
+            <View style={styles.typeSelectorRow}>
+              <TouchableOpacity
+                style={[styles.selectorChip, newRoutine.type === 'MORNING' && styles.selectorChipActive]}
+                onPress={() => setNewRoutine({ ...newRoutine, type: 'MORNING' })}
+              >
+                <Text style={[styles.selectorChipText, newRoutine.type === 'MORNING' && styles.selectorChipTextActive]}>🌅 Sabah</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.selectorChip, newRoutine.type === 'NIGHT' && styles.selectorChipActive]}
+                onPress={() => setNewRoutine({ ...newRoutine, type: 'NIGHT' })}
+              >
+                <Text style={[styles.selectorChipText, newRoutine.type === 'NIGHT' && styles.selectorChipTextActive]}>🌙 Akşam</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.selectorChip, newRoutine.type === 'WEEKLY' && styles.selectorChipActive]}
+                onPress={() => setNewRoutine({ ...newRoutine, type: 'WEEKLY' })}
+              >
+                <Text style={[styles.selectorChipText, newRoutine.type === 'WEEKLY' && styles.selectorChipTextActive]}>📅 Haftalık</Text>
+              </TouchableOpacity>
+            </View>
+
+            {newRoutine.type === 'WEEKLY' && (
+              <View style={styles.weeklyDaySection}>
+                <Text style={styles.fieldLabel}>Hangi Gün Uygulanacak?</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.daysScroll}>
+                  {DAYS.map((day, index) => (
+                    <TouchableOpacity
+                      key={day}
+                      style={[styles.dayChip, newRoutine.dayOfWeek === index + 1 && styles.dayChipActive]}
+                      onPress={() => setNewRoutine({ ...newRoutine, dayOfWeek: index + 1 })}
+                    >
+                      <Text style={[styles.dayChipText, newRoutine.dayOfWeek === index + 1 && styles.dayChipTextActive]}>{day}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            <View style={styles.actionButtonRow}>
+              <TouchableOpacity onPress={() => setIsAddModalVisible(false)} style={styles.modernCancelBtn}>
+                <Text style={styles.modernCancelBtnText}>Vazgeç</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleSaveRoutine} style={styles.modernSaveButton}>
+                <Ionicons name="cloud-upload-outline" size={18} color="white" style={{ marginRight: 6 }} />
+                <Text style={styles.modernSaveButtonText}>Sisteme Kaydet</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
-
-
     </SafeAreaView>
   );
 }
@@ -469,86 +566,77 @@ const styles = StyleSheet.create({
   brandTitle: { fontSize: 22, fontWeight: 'bold', color: COLORS.textPrimary, textAlign: 'center', marginBottom: 20 },
   greetingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   greetingText: { fontSize: 26, fontWeight: '600', color: COLORS.textPrimary },
-  weatherCard: { backgroundColor: COLORS.bgWhite, padding: 15, borderRadius: 15, width: 110, alignItems: 'center', elevation: 3 },
-  weatherCity: { fontSize: 10, color: '#9E9E9E', fontWeight: '700' },
-  weatherTemp: { fontSize: 32, fontWeight: 'bold', color: COLORS.textSecondary },
-  weatherDetailRow: { flexDirection: 'row', alignItems: 'center' },
-  weatherDesc: { fontSize: 10, color: COLORS.textSecondary, textAlign: 'right', marginRight: 5 },
-  mainSection: { backgroundColor: COLORS.bgWhite, flex: 1, borderTopLeftRadius: 35, borderTopRightRadius: 35, padding: 25, paddingTop: 30, marginTop: 10 },
-  sectionTitle: { fontSize: 12, fontWeight: '700', color: '#9E9E9E', marginBottom: 20, letterSpacing: 1 },
-  routinesRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30 },
+  weatherCard: { backgroundColor: COLORS.bgWhite, padding: 12, borderRadius: 15, width: 115, alignItems: 'center', elevation: 3, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
+  weatherCity: { fontSize: 9, color: '#9E9E9E', fontWeight: '700', marginBottom: 2 },
+  weatherTemp: { fontSize: 28, fontWeight: 'bold', color: COLORS.textSecondary },
+  weatherDetailRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2, width: '100%', justifyContent: 'center' },
+  weatherDesc: { fontSize: 9, color: COLORS.textSecondary, marginRight: 4, maxWidth: 70 },
+  
+  // 🎯 YENİ EKLENEN: Selamlama Baloncuğu Tasarım Stili
+  greetingBubbleCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    padding: 14,
+    borderRadius: 16,
+    marginTop: 15,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#F5E6ED',
+  },
+  greetingBubbleText: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+
+  mainSection: { backgroundColor: COLORS.bgWhite, flex: 1, borderTopLeftRadius: 35, borderTopRightRadius: 35, padding: 25, paddingTop: 30, marginTop: 15 },
+  sectionTitle: { fontSize: 12, fontWeight: '700', color: '#9E9E9E', marginBottom: 15, letterSpacing: 1 },
+  routinesRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
   routineCard: { backgroundColor: '#F9F9F9', padding: 15, borderRadius: 20, width: '48%', minHeight: 120 },
-  routineCardTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 15 },
-  routineItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: '#E0E0E0', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
-  checkboxChecked: { backgroundColor: COLORS.checked, borderColor: COLORS.checked },
-  routineItemText: { fontSize: 14, color: COLORS.textSecondary },
-  routineItemTextChecked: { color: '#9E9E9E', textDecorationLine: 'line-through' },
+  routineCardTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 12 },
   weeklyDayContainer: { marginBottom: 15 },
   dayLabelContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, paddingLeft: 5 },
   dayLabelText: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary, marginLeft: 6, textTransform: 'uppercase' },
   weeklyCard: { backgroundColor: '#fff', padding: 15, borderRadius: 15, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
-  alertBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.alertBg, padding: 15, borderRadius: 15, marginTop: 20, borderWidth: 1, borderColor: '#ffbaba' },
+  alertBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.alertBg, padding: 15, borderRadius: 15, marginTop: 5, marginBottom: 15, borderWidth: 1, borderColor: '#ffbaba' },
   alertTitle: { fontSize: 14, fontWeight: '700', color: COLORS.alertText },
   alertMessage: { fontSize: 13, color: COLORS.alertText, marginTop: 2 },
-  noAlertBox: { padding: 15, backgroundColor: '#F5F5F5', borderRadius: 15, alignItems: 'center', marginTop: 10 },
+  noAlertBox: { padding: 12, backgroundColor: '#F5F5F5', borderRadius: 15, alignItems: 'center', marginTop: 5, marginBottom: 15 },
   noAlertText: { fontSize: 12, color: '#9E9E9E', fontStyle: 'italic' },
   emptyText: { textAlign: 'center', color: COLORS.textSecondary, fontStyle: 'italic', marginTop: 10, fontSize: 12 },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 10,
-  },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 10 },
   moreButton: { padding: 5 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: {
-    backgroundColor: '#FFF',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    padding: 25,
-    paddingBottom: 40,
-    alignItems: 'center'
-  },
+  modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 40, alignItems: 'center' },
   modalHeaderIndicator: { width: 40, height: 5, backgroundColor: '#DDD', borderRadius: 3, marginBottom: 15 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 20, color: '#333' },
   modalButton: { flexDirection: 'row', alignItems: 'center', width: '100%', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
   modalButtonText: { fontSize: 16, fontWeight: '600', color: '#333', marginLeft: 15 },
-  closeButton: { marginTop: 20 },
-  closeButtonText: { color: '#999', fontSize: 16, fontWeight: '600' },
-  input: {
-    width: '100%',
-    backgroundColor: '#F5F5F5',
-    padding: 15,
-    borderRadius: 12,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: '#EEE'
-  },
-  pickerRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 20,
-    width: '100%'
-  },
-  pickerBtn: {
-    flex: 1,
-    padding: 10,
-    backgroundColor: '#EEE',
-    borderRadius: 10,
-    alignItems: 'center'
-  },
-  pickerBtnActive: { backgroundColor: COLORS.accent },
-  pickerText: { fontSize: 12, color: '#666' },
-  pickerTextActive: { color: '#FFF', fontWeight: 'bold' },
-  saveButton: {
-    backgroundColor: COLORS.accent,
-    width: '100%',
-    padding: 15,
-    borderRadius: 15,
-    alignItems: 'center',
-    marginTop: 10
-  },
-  saveButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  modernModalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 35, borderTopRightRadius: 35, padding: 25, paddingBottom: 45, width: '100%' },
+  modernModalTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textPrimary, marginBottom: 25, letterSpacing: 0.5 },
+  fieldLabel: { fontSize: 13, fontWeight: '700', color: '#757575', marginBottom: 10, marginTop: 5, letterSpacing: 0.3 },
+  modernInput: { width: '100%', backgroundColor: '#F8F5FC', padding: 16, borderRadius: 16, fontSize: 15, color: '#333', marginBottom: 20, borderWidth: 1, borderColor: '#EFEAF5' },
+  typeSelectorRow: { flexDirection: 'row', width: '100%', gap: 10, marginBottom: 20 },
+  selectorChip: { flex: 1, backgroundColor: '#F5F5F5', paddingVertical: 12, borderRadius: 14, alignItems: 'center', borderWidth: 1.5, borderColor: 'transparent' },
+  selectorChipActive: { backgroundColor: '#F4EFFB', borderColor: COLORS.accent },
+  selectorChipText: { fontSize: 13, color: '#666', fontWeight: '600' },
+  selectorChipTextActive: { color: COLORS.accent, fontWeight: 'bold' },
+  weeklyDaySection: { width: '100%', marginBottom: 15 },
+  daysScroll: { gap: 8, paddingVertical: 4, paddingRight: 20 },
+  dayChip: { backgroundColor: '#F5F5F5', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: '#EEEEEE' },
+  dayChipActive: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
+  dayChipText: { fontSize: 13, color: '#666', fontWeight: '500' },
+  dayChipTextActive: { color: '#FFF', fontWeight: 'bold' },
+  actionButtonRow: { flexDirection: 'row', width: '100%', gap: 15, marginTop: 20, alignItems: 'center' },
+  modernCancelBtn: { flex: 1, paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
+  modernCancelBtnText: { color: '#9E9E9E', fontSize: 15, fontWeight: '600' },
+  modernSaveButton: { flex: 2, backgroundColor: COLORS.accent, paddingVertical: 15, borderRadius: 16, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', elevation: 3 },
+  modernSaveButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 15 },
+  todoStatusContainer: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, width: '100%', marginBottom: 4 },
+  statusCircle: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#BDBDBD', marginRight: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
+  statusCircleCompleted: { backgroundColor: '#4CAF50', borderColor: '#4CAF50' }, 
+  routineText: { fontSize: 14, color: '#333', fontWeight: '500', flex: 1 },
+  routineTextCompleted: { textDecorationLine: 'line-through', color: '#9E9E9E', fontWeight: '400' }, 
 });
