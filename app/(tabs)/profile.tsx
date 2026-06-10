@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useGlobalSearchParams, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { BASE_URL } from '../../service/apiConfig';
 
 // Backend UserResponseDto ile birebir uyumlu interface
@@ -72,6 +72,26 @@ export default function ProfileScreen() {
     fetchUserProfile();
   }, [userId]);
 
+  const handleLogout = () => {
+  Alert.alert(
+    "Çıkış Yap",
+    "Hesabından çıkmak istiyor musun?",
+    [
+      { text: "İptal", style: "cancel" },
+      {
+        text: "Çıkış Yap",
+        style: "destructive",
+        onPress: () => {
+          // TODO: token temizleme
+          // await AsyncStorage.removeItem("token");
+
+          router.replace("/");
+        }
+      }
+    ]
+  );
+};
+
   const UserAvatar = ({ imageUrl }: { imageUrl: string | null | undefined }) => {
     return (
       <View style={styles.container}>
@@ -90,7 +110,7 @@ export default function ProfileScreen() {
 
   const [modalVisible, setModalVisible] = useState(false);
 
-  // cilt tipini Backend'e Güncelleyen QA Garantili Metot
+
   const updateSkinType = async (selectedENType: string) => {
     try {
       setModalVisible(false);
@@ -138,13 +158,14 @@ export default function ProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Header */}
+    <SafeAreaView style={{ flex: 1 }}>
+      <ScrollView showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ paddingBottom: 100,paddingTop: 40, backgroundColor: '#ffe4f0'}}>
+        {/* Header 
         <View style={styles.header}>
           <Text style={styles.headerBrand}>GlowGuide</Text>
 
-        </View>
+        </View>*/}
         <Text style={styles.headerSubtitle}>Profilim ve Ayarlar</Text>
 
         {/* User Card */}
@@ -211,7 +232,12 @@ export default function ProfileScreen() {
                 params: { userId: userId }
               })}
             />
-            <SettingItem icon="log-out-outline" title="Çıkış Yap" color="#FFEBEE" />
+             <SettingItem
+      icon="log-out-outline"
+      title="Çıkış Yap"
+      color="#FFEBEE"
+      onPress={handleLogout}
+    />
           </View>
         </View>
       </ScrollView>
@@ -250,12 +276,24 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#E1D7F2', paddingTop: 20 },
+  container: { flex: 1, backgroundColor: '#ffe4f0'  },
   header: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 25, marginTop: 10 },
-  headerBrand: { fontSize: 24, fontWeight: 'bold', color: '#333' },
-  headerSubtitle: { fontSize: 18, textAlign: 'center', color: '#333', marginBottom: 20 },
+ headerBrand: {
+  fontSize: 26,
+  fontWeight: '900',
+  color: '#5D4F8D',
+  letterSpacing: 1
+},
+headerSubtitle: {
+  fontSize: 22,
+  fontWeight: '800',
+  textAlign: 'center',
+  color: '#450428',
+  marginBottom: 20,
+  letterSpacing: 0.5
+},
   userCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: '#fff3f7',
     marginHorizontal: 25,
     borderRadius: 25,
     padding: 25,
@@ -268,13 +306,13 @@ const styles = StyleSheet.create({
   },
   avatarContainer: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#F5F5F5', justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
   userName: { fontSize: 22, fontWeight: '600', color: '#333' },
-  tagContainer: { backgroundColor: '#E1D7F2', paddingHorizontal: 15, paddingVertical: 5, borderRadius: 15, marginTop: 8 },
-  tagText: { color: '#5D4F8D', fontSize: 13, fontWeight: '600' },
+  tagContainer: { backgroundColor: '#f6dbe7', paddingHorizontal: 15, paddingVertical: 5, borderRadius: 15, marginTop: 8 },
+  tagText: { color: '#7e0644', fontSize: 13, fontWeight: '600' },
   sectionContainer: { paddingHorizontal: 25, marginBottom: 25 },
   sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 12, color: '#333' },
   cardGroup: { backgroundColor: '#FFF', borderRadius: 20, overflow: 'hidden' },
   settingItem: { flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
-  iconContainer: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  //iconContainer: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   settingTextContainer: { flex: 1 },
   settingTitle: { fontSize: 16, fontWeight: '500', color: '#333' },
   settingSubtitle: { fontSize: 12, color: '#888', marginTop: 2 },
@@ -314,4 +352,12 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#5D4F8D',
   },
+  iconContainer: {
+  width: 40,
+  height: 40,
+  borderRadius: 12,
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginRight: 15
+},
 });

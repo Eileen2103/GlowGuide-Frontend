@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker'; // Kamera/Galeri izni ve tetikleme için
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useGlobalSearchParams, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
     ActivityIndicator,
@@ -18,8 +18,16 @@ import { BASE_URL } from '../../service/apiConfig';
 
 export default function AIAssistantScreen() {
     const router = useRouter();
-    const { userId } = useLocalSearchParams();
-    const validUserId = userId && userId !== 'undefined' ? userId : '1';
+    const localParams = useLocalSearchParams();
+    const globalParams = useGlobalSearchParams();
+
+    const userId = localParams.userId || globalParams.userId;
+
+    if (!userId || userId === 'undefined') {
+        Alert.alert("Hata", "UserId bulunamadı");
+        router.replace('/');
+        return null;
+    }
 
     const [loading, setLoading] = useState(false);
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -78,9 +86,9 @@ export default function AIAssistantScreen() {
             formData.append('productName', 'Tarayıcı Ürünü'); // Statik veya kullanıcıdan alınan bir isim paslanabilir
             formData.append('imageUrl', uri); // Cihaz lokal URI'si veya uzak sunucu linki
 
-            console.log(`QA KONTROL - Sunucuya Resim Gönderiliyor. URL: ${BASE_URL}/analysis/${validUserId}`);
+         
 
-            const response = await fetch(`${BASE_URL}/analysis/${validUserId}`, {
+            const response = await fetch(`${BASE_URL}/analysis/${userId}`, {
                 method: 'POST',
                 body: formData,
                 headers: {
@@ -151,7 +159,7 @@ export default function AIAssistantScreen() {
                             <View style={styles.iconCircle}>
                                 <MaterialCommunityIcons name="camera-plus" size={40} color="#5D4F8D" />
                             </View>
-                            <Text style={styles.cameraTitle}>İçindekiler Fotoğrafı Çek</Text>
+                            <Text style={styles.cameraTitle}>İçindekiler Fotoğrafı Yükle</Text>
                             <Text style={styles.cameraSubtitle}>
                                 Ürünün arkasındaki "Ingredients" veya "İçindekiler" alanını net bir şekilde fotoğraflayın
                             </Text>
@@ -162,7 +170,7 @@ export default function AIAssistantScreen() {
                 {/* 2. GEÇMİŞ ANALİZLER CONTAINER'I (Yönlendirme Kartı) */}
                 <TouchableOpacity
                     style={styles.historyContainer}
-                   
+
                     onPress={() => router.push({ pathname: "/analysisHistory", params: { userId: userId } })}
                 >
                     <View style={styles.historyLeft}>

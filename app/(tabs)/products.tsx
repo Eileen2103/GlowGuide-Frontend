@@ -304,21 +304,32 @@ export default function ProductsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.headerTitle}>Ürünlerim</Text>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Ürünlerim 🧴</Text>
+        <Text style={styles.headerSubtitle}>Kozmetik & bakım ürünlerin</Text>
+      </View>
 
       {/* Kategori Filtreleri */}
       <View style={styles.categoryContainer}>
-        {['HEPSİ', 'SKIN', 'HAIR', 'MAKEUP'].map((cat) => (
-          <TouchableOpacity
-            key={cat}
-            style={[styles.categoryButton, selectedCategory === cat && styles.activeCategoryButton]}
-            onPress={() => handleCategoryPress(cat)}
-          >
-            <Text style={[styles.categoryButtonText, selectedCategory === cat && styles.activeCategoryButtonText]}>
-              {cat === 'SKIN' ? 'Cilt' : cat === 'HAIR' ? 'Saç' : cat === 'MAKEUP' ? 'Makyaj' : 'Hepsi'}
-            </Text>
-          </TouchableOpacity>
-        ))}
+       {['HEPSİ', 'SKIN', 'HAIR', 'MAKEUP'].map((cat) => (
+  <TouchableOpacity
+    key={cat}
+    style={[
+      styles.categoryButton,
+      selectedCategory === cat && styles.activeCategoryButton
+    ]}
+    onPress={() => handleCategoryPress(cat)}
+  >
+    <Text
+      style={[
+        styles.categoryButtonText,
+        selectedCategory === cat && styles.activeCategoryButtonText
+      ]}
+    >
+      {cat === 'SKIN' ? 'Cilt' : cat === 'HAIR' ? 'Saç' : cat === 'MAKEUP' ? 'Makyaj' : 'Hepsi'}
+    </Text>
+  </TouchableOpacity>
+))}
       </View>
 
       <TouchableOpacity style={styles.addButton} onPress={() => {
@@ -329,6 +340,7 @@ export default function ProductsScreen() {
         <Ionicons name="add-circle" size={24} color="#FFF" />
         <Text style={styles.addButtonText}>Yeni Ürün Ekle</Text>
       </TouchableOpacity>
+      
 
       <FlatList
         data={filteredProducts}
@@ -560,18 +572,77 @@ export default function ProductsScreen() {
 
 // ... Stillerin (styles) hepsi senin yazdığın haliyle aynı kalıyor, ekleme yapmaya gerek yok!
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff', paddingTop: 20 },
-  headerTitle: { fontSize: 28, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, color: '#333' },
-  categoryContainer: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 20 },
-  categoryButton: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F0F0F0' },
-  activeCategoryButton: { backgroundColor: '#5D4F8D' },
-  categoryButtonText: { fontSize: 14, fontWeight: '600', color: '#666' },
-  activeCategoryButtonText: { color: '#FFF' },
+  container: {
+    flex: 1,
+    backgroundColor: '#F6F4FB',
+    paddingTop: 20
+  },
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 10,
+    marginLeft:10
+  },
+  headerTitle: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#2D2D2D',
+    letterSpacing: 0.5
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#7A7A7A',
+    marginTop: 6,
+  letterSpacing: 0.2
+  },
+  categoryContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 15,
+    marginBottom: 15
+  },
+
+  categoryButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#EEEAF7',
+    marginRight: 8
+  },
+
+  activeCategoryButton: {
+    backgroundColor: '#6C5CE7'
+  },
+
+  categoryButtonText: {
+    fontSize: 13,
+    color: '#555',
+    fontWeight: '600'
+  },
+
+  activeCategoryButtonText: {
+    color: '#FFF'
+  },
   listContainer: { paddingHorizontal: 20, paddingBottom: 100 },
-  card: { flexDirection: 'row', justifyContent: 'space-between', borderRadius: 20, padding: 15, marginBottom: 15, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  card: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderRadius: 18,
+    padding: 15,
+    marginBottom: 12,
+    backgroundColor: '#FFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2
+  },
   cardLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   textContainer: { marginLeft: 15, flex: 1 },
-  productName: { fontSize: 16, fontWeight: 'bold', color: '#333', flexShrink: 1 },
+  productName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#2D2D2D',
+    flexShrink: 1
+  },
   brandText: { fontSize: 13, color: '#666', marginTop: 2 },
   cardRight: { alignItems: 'flex-end', justifyContent: 'space-between', marginLeft: 10, minWidth: 70 },
   scoreText: { fontSize: 14, fontWeight: '600', color: '#6C5CE7' },
@@ -602,5 +673,17 @@ const styles = StyleSheet.create({
   quickDateButton: { paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#F0F0F0', borderRadius: 8, borderWidth: 1, borderColor: '#DDD' },
   quickDateText: { fontSize: 11, color: '#666', fontWeight: '600' },
   datePickerSelector: { backgroundColor: '#F7F7F7', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#EEE', justifyContent: 'center', alignItems: 'center', height: 48, width: '100%' },
-  datePickerSelectorText: { fontSize: 14, color: '#333', fontWeight: '600' }
+  datePickerSelectorText: { fontSize: 14, color: '#333', fontWeight: '600' },
+  floatingButton: {
+    position: 'absolute',
+    bottom: 30,
+    right: 20,
+    backgroundColor: '#6C5CE7',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5
+  }
 });
