@@ -35,11 +35,11 @@ export default function AIAssistantScreen() {
         }
 
         // Kamerayı Fırlat
-        const result = await ImagePicker.launchCameraAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
             allowsEditing: true,
             aspect: [4, 3],
-            quality: 0.8,
+            quality: 0.4, //  4-5 MB'lık resmi kalitesini bozmadan 400KB'a düşürür, backend'i asla yormaz!
         });
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -162,7 +162,8 @@ export default function AIAssistantScreen() {
                 {/* 2. GEÇMİŞ ANALİZLER CONTAINER'I (Yönlendirme Kartı) */}
                 <TouchableOpacity
                     style={styles.historyContainer}
-                    onPress={() => router.push({ pathname: "/products", params: { userId: userId } })}
+                   
+                    onPress={() => router.push({ pathname: "/analysisHistory", params: { userId: userId } })}
                 >
                     <View style={styles.historyLeft}>
                         <View style={styles.historyIconCircle}>
